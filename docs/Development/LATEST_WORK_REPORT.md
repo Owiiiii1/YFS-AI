@@ -12,7 +12,9 @@ Filler protocol is supported: ElevenLabs Custom LLM buffer words in the same SSE
 
 ## Commit
 
-Recorded after `git commit` / `git push origin main`.
+`bec22d2` on `main`
+
+Add Voice Session Context, prompt orchestration, and tool fillers.
 
 ## Files changed
 
