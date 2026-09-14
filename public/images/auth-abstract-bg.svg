@@ -1,0 +1,67 @@
+<svg width="1600" height="1200" viewBox="0 0 1600 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="40" x2="1510" y2="1180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#020617"/>
+      <stop offset="0.45" stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+
+    <radialGradient id="vignette" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(800 600) rotate(90) scale(760 1050)">
+      <stop offset="0.55" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
+    </radialGradient>
+
+    <radialGradient id="lightA" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(330 230) rotate(18) scale(520 340)">
+      <stop stop-color="#8B5CF6" stop-opacity="0.72"/>
+      <stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="lightB" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1220 260) rotate(-12) scale(460 320)">
+      <stop stop-color="#22D3EE" stop-opacity="0.52"/>
+      <stop offset="1" stop-color="#22D3EE" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="lightC" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(980 940) rotate(8) scale(610 390)">
+      <stop stop-color="#6366F1" stop-opacity="0.46"/>
+      <stop offset="1" stop-color="#6366F1" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#E2E8F0" stop-opacity="0.2"/>
+      <stop offset="1" stop-color="#E2E8F0" stop-opacity="0.03"/>
+    </linearGradient>
+
+    <filter id="softBlur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="24"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="1200" fill="url(#bg)"/>
+  <rect width="1600" height="1200" fill="url(#lightA)"/>
+  <rect width="1600" height="1200" fill="url(#lightB)"/>
+  <rect width="1600" height="1200" fill="url(#lightC)"/>
+
+  <g opacity="0.25">
+    <path d="M150 1040L760 140L1440 940" stroke="#94A3B8" stroke-width="1.2"/>
+    <path d="M40 1110L700 190L1370 1030" stroke="#64748B" stroke-width="1"/>
+    <path d="M260 1140L850 240L1510 1000" stroke="#CBD5E1" stroke-opacity="0.45" stroke-width="0.8"/>
+  </g>
+
+  <g opacity="0.42">
+    <path d="M1020 120L1520 420L1080 720L590 420L1020 120Z" fill="url(#glass)"/>
+    <path d="M930 220L1370 470L990 710L560 470L930 220Z" fill="#334155" fill-opacity="0.32"/>
+    <path d="M430 520L780 720L500 900L160 700L430 520Z" fill="#1E293B" fill-opacity="0.58"/>
+  </g>
+
+  <g opacity="0.16">
+    <circle cx="360" cy="240" r="210" stroke="#E2E8F0" stroke-width="1.5"/>
+    <circle cx="1180" cy="860" r="300" stroke="#C7D2FE" stroke-width="1.2"/>
+    <circle cx="1220" cy="260" r="170" stroke="#67E8F9" stroke-width="1"/>
+  </g>
+
+  <g filter="url(#softBlur)" opacity="0.22">
+    <path d="M560 90L1130 370L760 600L230 350L560 90Z" fill="#93C5FD"/>
+  </g>
+
+  <rect width="1600" height="1200" fill="url(#vignette)"/>
+</svg>

@@ -1,0 +1,24 @@
+[Unit]
+Description=YFS AI Voice Runtime
+After=network.target
+Documentation=https://ai.youngfashionshow.com/voice-engine/health
+
+[Service]
+Type=simple
+User=deploy
+Group=www-data
+WorkingDirectory=/var/www/yfs-ai/voice-runtime
+EnvironmentFile=/var/www/yfs-ai/voice-runtime/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=yfs-voice-runtime
+
+[Install]
+WantedBy=multi-user.target
