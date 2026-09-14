@@ -8,10 +8,11 @@ import {
   extractGeminiTextParts,
   openaiMessagesToGemini,
 } from "../src/llm/gemini-convert.js";
-import { GeminiLlmProvider } from "../src/llm/gemini-provider.js";
+import { GeminiLlmProvider, GeminiUpstreamError } from "../src/llm/gemini-provider.js";
 import { createChatCompletionChunk } from "../src/llm/openai-chunks.js";
 import { createLlmProvider, UnsupportedLlmProviderError } from "../src/llm/provider.js";
 import { OpenAiLlmProvider } from "../src/llm/openai-provider.js";
+import { YFS_VOICE_TOOLS } from "../src/voice-tools/catalog.js";
 import type { ServerResponse } from "node:http";
 
 test("createLlmProvider selects gemini", () => {
@@ -85,12 +86,16 @@ test("Gemini conversion maps OpenAI tools without inventing results", () => {
       function: {
         name: "end_call",
         description: "End the call",
-        parameters: { type: "object", properties: {} },
+        parameters: { type: "object", properties: {}, additionalProperties: false },
       },
     }],
     toolChoice: "auto",
   });
   assert.equal(request.tools?.[0]?.functionDeclarations[0]?.name, "end_call");
+  assert.deepEqual(request.tools?.[0]?.functionDeclarations[0]?.parameters, {
+    type: "object",
+    properties: {},
+  });
   assert.equal(request.toolConfig?.functionCallingConfig.mode, "AUTO");
 });
 
@@ -176,8 +181,84 @@ test("Gemini thought parts are skipped and function calls become OpenAI tool_cal
   assert.equal(extracted.finishReason, "stop");
 });
 
+test("Gemini thought_signature is replayed on functionCall parts", () => {
+  const extracted = extractGeminiTextParts({
+    candidates: [{
+      content: {
+        parts: [{
+          functionCall: { name: "get_current_yfs_test_context", args: {} },
+          thoughtSignature: "sig-abc",
+        }],
+      },
+      finishReason: "STOP",
+    }],
+  });
+  assert.equal(extracted.functionCalls[0]?.thoughtSignature, "sig-abc");
+
+  const converted = openaiMessagesToGemini([
+    { role: "user", content: "What is the YFS test event?" },
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [{
+        id: "call_1",
+        type: "function",
+        function: { name: "get_current_yfs_test_context", arguments: "{}" },
+        thought_signature: "sig-abc",
+      }],
+    } as Parameters<typeof openaiMessagesToGemini>[0][number],
+    {
+      role: "tool",
+      tool_call_id: "call_1",
+      name: "get_current_yfs_test_context",
+      content: "{\"ok\":true}",
+    } as Parameters<typeof openaiMessagesToGemini>[0][number],
+  ]);
+  const model = converted.contents.find((item) => item.role === "model");
+  assert.equal(model?.parts.some((part) => part.thoughtSignature === "sig-abc"), true);
+  assert.equal(model?.parts.some((part) => part.functionCall?.name === "get_current_yfs_test_context"), true);
+});
+
 test("OpenAI chunk helper never embeds secrets", () => {
   const chunk = createChatCompletionChunk("chatcmpl-x", "gemini-3.8-flash", { content: "OK" }, null);
   assert.equal(chunk.object, "chat.completion.chunk");
   assert.equal(JSON.stringify(chunk).includes("AIza"), false);
+});
+
+test("Gemini HTTP 400 logs error.code/status/message without the API key", async () => {
+  const lines: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    lines.push(args.map((value) => String(value)).join(" "));
+  };
+  const provider = new GeminiLlmProvider("AIza-secret-not-for-logs", 1_000, async () => new Response(
+    JSON.stringify({
+      error: {
+        code: 400,
+        message: "Unknown name \"additionalProperties\" at 'tools[0].function_declarations[0].parameters'",
+        status: "INVALID_ARGUMENT",
+      },
+    }),
+    { status: 400, headers: { "Content-Type": "application/json" } },
+  ));
+
+  try {
+    await assert.rejects(
+      () => provider.streamChatCompletion({
+        model: "gemini-3.8-flash",
+        messages: [{ role: "user", content: "What is the YFS test event?" }],
+        tools: YFS_VOICE_TOOLS,
+      }, new AbortController().signal),
+      (error: unknown) => error instanceof GeminiUpstreamError && /additionalProperties/.test(error.message),
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  const joined = lines.join("\n");
+  assert.match(joined, /gemini\.http_error/);
+  assert.match(joined, /INVALID_ARGUMENT/);
+  assert.match(joined, /additionalProperties/);
+  assert.equal(joined.includes("AIza-secret-not-for-logs"), false);
+  assert.equal(joined.includes("x-goog-api-key"), false);
 });

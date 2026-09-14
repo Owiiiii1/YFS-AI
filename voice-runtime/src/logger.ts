@@ -7,7 +7,7 @@ const RANK: Record<Level, number> = {
   error: 40,
 };
 
-const SECRET_KEY = /api[_-]?key|authorization|token|secret|password|credential/i;
+const SECRET_KEY = /api[_-]?key|authorization|token|secret|password|credential|thought[_-]?signature/i;
 
 function currentLevel(): Level {
   const raw = (process.env.VOICE_LOG_LEVEL ?? "info").toLowerCase();

@@ -1,8 +1,10 @@
 import type { ChatCompletionMessageParam, ChatCompletionTool } from "openai/resources/chat/completions";
+import { openaiJsonSchemaToGemini } from "./gemini-schema.js";
 
 export type GeminiPart = {
   text?: string;
   thought?: boolean;
+  thoughtSignature?: string;
   functionCall?: { name?: string; args?: Record<string, unknown> };
   functionResponse?: { name?: string; response?: Record<string, unknown> };
 };
@@ -108,7 +110,16 @@ function assistantToolCallParts(message: ChatCompletionMessageParam): GeminiPart
     } else if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
       args = rawArgs as Record<string, unknown>;
     }
-    parts.push({ functionCall: { name, args } });
+    const extra = call as { thought_signature?: unknown; thoughtSignature?: unknown };
+    const thoughtSignature = typeof extra.thought_signature === "string" && extra.thought_signature
+      ? extra.thought_signature
+      : typeof extra.thoughtSignature === "string" && extra.thoughtSignature
+        ? extra.thoughtSignature
+        : "";
+    parts.push({
+      functionCall: { name, args },
+      ...(thoughtSignature ? { thoughtSignature } : {}),
+    });
   }
   return parts;
 }
@@ -197,7 +208,10 @@ export function openaiToolsToGemini(tools: ChatCompletionTool[] | undefined): Ge
       declaration.description = tool.function.description;
     }
     if (tool.function.parameters && typeof tool.function.parameters === "object") {
-      declaration.parameters = tool.function.parameters as Record<string, unknown>;
+      const parameters = openaiJsonSchemaToGemini(tool.function.parameters);
+      if (parameters) {
+        declaration.parameters = parameters;
+      }
     }
     declarations.push(declaration);
   }
@@ -282,9 +296,13 @@ export function mapGeminiFinishReason(reason: string | undefined): string | null
   }
 }
 
-export function extractGeminiTextParts(event: unknown): { texts: string[]; functionCalls: Array<{ name: string; args: Record<string, unknown> }>; finishReason: string | null } {
+export function extractGeminiTextParts(event: unknown): {
+  texts: string[];
+  functionCalls: Array<{ name: string; args: Record<string, unknown>; thoughtSignature?: string }>;
+  finishReason: string | null;
+} {
   const texts: string[] = [];
-  const functionCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const functionCalls: Array<{ name: string; args: Record<string, unknown>; thoughtSignature?: string }> = [];
   let finishReason: string | null = null;
 
   if (!event || typeof event !== "object") {
@@ -312,7 +330,7 @@ export function extractGeminiTextParts(event: unknown): { texts: string[]; funct
     if (!part || typeof part !== "object") {
       continue;
     }
-    const record = part as GeminiPart;
+    const record = part as GeminiPart & { thought_signature?: unknown };
     if (record.thought === true) {
       continue;
     }
@@ -323,7 +341,16 @@ export function extractGeminiTextParts(event: unknown): { texts: string[]; funct
       const args = record.functionCall.args && typeof record.functionCall.args === "object"
         ? record.functionCall.args
         : {};
-      functionCalls.push({ name: record.functionCall.name, args });
+      const thoughtSignature = typeof record.thoughtSignature === "string" && record.thoughtSignature
+        ? record.thoughtSignature
+        : typeof record.thought_signature === "string" && record.thought_signature
+          ? record.thought_signature
+          : undefined;
+      functionCalls.push({
+        name: record.functionCall.name,
+        args,
+        ...(thoughtSignature ? { thoughtSignature } : {}),
+      });
     }
   }
 

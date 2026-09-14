@@ -1,6 +1,7 @@
 import { log } from "../logger.js";
 import { isAbortError } from "./abort.js";
 import { buildGeminiGenerateRequest, extractGeminiTextParts, geminiModelPath } from "./gemini-convert.js";
+import { geminiHttpErrorLogFields, summarizeGeminiErrorBody } from "./gemini-error.js";
 import { createChatCompletionChunk, createChatCompletionId } from "./openai-chunks.js";
 import type { ChatStreamParams, LlmProvider } from "./types.js";
 
@@ -104,8 +105,12 @@ export class GeminiLlmProvider implements LlmProvider {
     });
 
     if (!response.ok) {
-      log.warn("gemini.http_error", { status: response.status, model });
-      throw new GeminiUpstreamError(`Gemini HTTP ${response.status}`);
+      const raw = await response.text().catch(() => "");
+      const summary = summarizeGeminiErrorBody(response.status, model, raw);
+      log.warn("gemini.http_error", geminiHttpErrorLogFields(summary));
+      throw new GeminiUpstreamError(
+        summary.message ? `Gemini HTTP ${response.status}: ${summary.message}` : `Gemini HTTP ${response.status}`,
+      );
     }
     if (!response.body) {
       throw new GeminiUpstreamError("Gemini response body is empty");
@@ -140,6 +145,7 @@ export class GeminiLlmProvider implements LlmProvider {
                   name: call.name,
                   arguments: JSON.stringify(call.args ?? {}),
                 },
+                ...(call.thoughtSignature ? { thought_signature: call.thoughtSignature } : {}),
               }],
             });
             toolCallIndex += 1;

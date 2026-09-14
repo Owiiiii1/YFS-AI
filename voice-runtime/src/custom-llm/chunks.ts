@@ -4,6 +4,7 @@ export type AccumulatedToolCall = {
   id: string;
   name: string;
   arguments: string;
+  thoughtSignature?: string;
 };
 
 export type StreamDelta = {
@@ -13,6 +14,7 @@ export type StreamDelta = {
     id?: string;
     name?: string;
     arguments?: string;
+    thoughtSignature?: string;
   }>;
   finishReason: string | null;
 };
@@ -42,15 +44,23 @@ export function inspectOpenAiChunk(chunk: unknown): StreamDelta {
       const raw = item as {
         index?: unknown;
         id?: unknown;
+        thought_signature?: unknown;
+        thoughtSignature?: unknown;
         function?: { name?: unknown; arguments?: unknown };
       };
       const index = typeof raw.index === "number" && Number.isFinite(raw.index) ? raw.index : toolCalls.length;
       const fn = raw.function && typeof raw.function === "object" ? raw.function : {};
+      const thoughtSignature = typeof raw.thought_signature === "string"
+        ? raw.thought_signature
+        : typeof raw.thoughtSignature === "string"
+          ? raw.thoughtSignature
+          : undefined;
       toolCalls.push({
         index,
         id: typeof raw.id === "string" ? raw.id : undefined,
         name: typeof fn.name === "string" ? fn.name : undefined,
         arguments: typeof fn.arguments === "string" ? fn.arguments : undefined,
+        thoughtSignature,
       });
     }
   }
@@ -72,6 +82,9 @@ export function accumulateToolCalls(
     }
     if (delta.arguments) {
       current.arguments += delta.arguments;
+    }
+    if (delta.thoughtSignature) {
+      current.thoughtSignature = delta.thoughtSignature;
     }
     acc.set(delta.index, current);
   }
@@ -107,8 +120,9 @@ export function toAssistantToolMessage(
         name: call.name,
         arguments: call.arguments || "{}",
       },
+      ...(call.thoughtSignature ? { thought_signature: call.thoughtSignature } : {}),
     })),
-  };
+  } as ChatCompletionMessageParam;
 }
 
 export function toToolResultMessage(

@@ -11,9 +11,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "tsx --test test/custom-llm.test.ts test/llm-provider.test.ts test/voice-tools.test.ts",
+    "test": "tsx --test test/custom-llm.test.ts test/llm-provider.test.ts test/voice-tools.test.ts test/gemini-schema.test.ts",
     "smoke": "node dist/smoke.js",
-    "smoke:llm": "node dist/smoke-custom-llm.js"
+    "smoke:llm": "node dist/smoke-custom-llm.js",
+    "smoke:gemini-tools": "node dist/smoke-gemini-tools.js"
   },
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "^2.65.0",
