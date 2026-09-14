@@ -14,7 +14,9 @@ Implemented and covered by automated tests. Laravel execute endpoint smoked on p
 
 ## Commit
 
-Recorded after `git commit` / `git push origin main` in this task.
+`e1fd5fd97ba8c51d945185afc7defebe0fb28d54` on `main`
+
+Add Laravel Voice Orchestrator and server-side test tool calling.
 
 ## Files changed
 
