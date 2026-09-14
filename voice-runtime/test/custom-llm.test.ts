@@ -7,6 +7,7 @@ import type { ChatStreamParams, LlmProvider } from "../src/llm/types.js";
 import { createHttpServer } from "../src/server/http.js";
 import { YFS_TEST_TOOL_NAME } from "../src/voice-tools/catalog.js";
 import type { ExecuteVoiceTool } from "../src/voice-tools/laravel-client.js";
+import type { FetchSessionTurn } from "../src/voice-tools/session-client.js";
 
 const SECRET = "test-voice-llm-secret";
 const OPENAI_KEY = "sk-test-openai-not-real";
@@ -135,17 +136,19 @@ async function start(options: {
   stream?: AsyncIterable<unknown> | ((signal: AbortSignal) => AsyncIterable<unknown>);
   createProvider?: (config: LaravelVoiceConfig["llm"], timeoutMs: number) => LlmProvider;
   executeVoiceTool?: ExecuteVoiceTool;
+  fetchSessionTurn?: FetchSessionTurn;
   useRealProviderFactory?: boolean;
 } = {}): Promise<Started> {
   const config = options.config === undefined ? providers() : options.config;
   const handlerOptions = options.useRealProviderFactory
-    ? { executeVoiceTool: options.executeVoiceTool }
+    ? { executeVoiceTool: options.executeVoiceTool, fetchSessionTurn: options.fetchSessionTurn }
     : {
         createProvider: options.createProvider ?? ((llm) => mockProvider(
           options.stream ?? defaultStream(),
           llm.provider || "openai",
         )),
         executeVoiceTool: options.executeVoiceTool,
+        fetchSessionTurn: options.fetchSessionTurn,
       };
   const server = createHttpServer(
     storeFor(config, options.state),
@@ -653,4 +656,113 @@ test("ElevenLabs native tools are still forwarded and not executed by Laravel", 
   assert.equal(executed, 0);
   assert.match(text, /"name":"end_call"/);
   assert.match(text, /data: \[DONE\]/);
+});
+
+test("fast path injects session prompt and does not call YFS tools", async () => {
+  let seenTools: string[] = [];
+  let seenPrompt = "";
+  let executed = 0;
+  const { base } = await start({
+    fetchSessionTurn: async () => ({
+      sessionId: "sess-fast",
+      activeTopic: "test_event",
+      responsePath: "fast",
+      systemPrompt: "SESSION yfs_context: event_name=YFS Test Event; message=Voice session context is working.",
+      allowedTools: [],
+      sectionNames: ["global", "session", "topic:test_event"],
+      promptChars: 80,
+      detectedLanguage: "en",
+      fillers: {},
+    }),
+    executeVoiceTool: async () => {
+      executed += 1;
+      return {};
+    },
+    createProvider: () => ({
+      providerName: "gemini",
+      async streamChatCompletion(params) {
+        seenTools = (params.tools ?? []).map((tool) => tool.type === "function" ? tool.function.name : "");
+        seenPrompt = typeof params.messages[0]?.content === "string" ? params.messages[0].content : "";
+        return defaultStream();
+      },
+    }),
+  });
+
+  const response = await post(base, {
+    body: chatBody({
+      messages: [
+        { role: "system", content: "Agent prompt from ElevenLabs." },
+        { role: "user", content: "What is the YFS test event?" },
+      ],
+    }),
+  });
+  const text = await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(executed, 0);
+  assert.equal(seenTools.includes(YFS_TEST_TOOL_NAME), false);
+  assert.match(seenPrompt, /YFS Test Event/);
+  assert.match(text, /Hello/);
+  assert.match(text, /data: \[DONE\]/);
+  assert.equal(text.includes("... "), false);
+});
+
+test("tool path writes ElevenLabs buffer-word filler then continues the same SSE stream", async () => {
+  let rounds = 0;
+  const { base } = await start({
+    fetchSessionTurn: async () => ({
+      sessionId: "sess-tool",
+      activeTopic: "test_status",
+      responsePath: "tool",
+      systemPrompt: "Call get_current_yfs_test_context for latest test status.",
+      allowedTools: [YFS_TEST_TOOL_NAME],
+      sectionNames: ["global", "session", "topic:test_status"],
+      promptChars: 40,
+      detectedLanguage: "en",
+      fillers: {
+        [YFS_TEST_TOOL_NAME]: {
+          enabled: true,
+          language: "en",
+          category: "lookup",
+          phraseId: "en_lookup_1",
+          text: "One moment, let me check... ",
+        },
+      },
+    }),
+    executeVoiceTool: async () => ({
+      source: "yfs_ai_test",
+      status: "ok",
+      message: "Voice tool calling is working",
+    }),
+    createProvider: () => ({
+      providerName: "gemini",
+      async streamChatCompletion() {
+        rounds += 1;
+        if (rounds === 1) {
+          return geminiFunctionCallStream();
+        }
+        return finalTextStream("The latest YFS test status is test-only.");
+      },
+    }),
+  });
+
+  const response = await post(base, {
+    body: chatBody({
+      messages: [
+        { role: "system", content: "Agent prompt from ElevenLabs." },
+        { role: "user", content: "Check the latest YFS test status." },
+      ],
+    }),
+  });
+  const text = await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(rounds, 2);
+  assert.match(text, /One moment, let me check\.\.\. /);
+  assert.match(text, /The latest YFS test status is test-only/);
+  assert.match(text, /data: \[DONE\]/);
+  const doneIndex = text.lastIndexOf("data: [DONE]");
+  const fillerIndex = text.indexOf("One moment, let me check");
+  const finalIndex = text.indexOf("The latest YFS test status");
+  assert.ok(fillerIndex >= 0 && fillerIndex < finalIndex);
+  assert.ok(finalIndex < doneIndex);
+  assert.equal((text.match(/data: \[DONE\]/g) ?? []).length, 1);
 });

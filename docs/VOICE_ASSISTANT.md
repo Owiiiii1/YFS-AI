@@ -9,7 +9,7 @@ Realtime production path is confirmed by a successful inbound telephone call:
 
 ElevenLabs voice layer + YFS Custom LLM gateway + Gemini.
 
-Laravel Voice Orchestrator exists for a **test tool only**. YFS Core / Bitrix tools, post-call pipeline, and Voice admin remain **Planned**. Live telephone tool calling is **Unverified**.
+Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). YFS Core / Bitrix tools, post-call pipeline, and Voice admin remain **Planned**.
 
 Related documents:
 
@@ -29,7 +29,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Realtime path **Current** (live inbound call confirmed). Voice Orchestrator **Current** for test-tool execution only. YFS Core / Bitrix / post-call / admin **Planned**. Live tool calling **Unverified**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Realtime path **Current**. Tool calling **Current** (live). Session context / Prompt Orchestrator / filler **Current** (code; live fast-path/filler proof after restart). YFS Core / Bitrix / post-call / admin **Planned**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
 **Current (see `docs/VOICE_ARCHITECTURE.md`):**
@@ -45,7 +45,6 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 - YFS Core / Bitrix24 Voice tools
 - production business tools
 - post-call `voice_calls` persistence, audio archive, transcript, analysis, Telegram
-- Voice prompt architecture (the temporary test-event tool rule is not that architecture)
 - live transfer / callback workflows in Laravel
 
 Voice Assistant and Sales Agent must not share one prompt or one agent configuration.

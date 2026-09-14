@@ -5,7 +5,7 @@ namespace App\Services\Voice\Tools;
 /**
  * Temporary read-only test tool. Not production event, customer, or CRM data.
  */
-final class TestVoiceTool implements VoiceToolInterface
+final class TestVoiceTool implements VoiceToolInterface, VoiceToolMetadataProvider
 {
     public const NAME = 'get_current_yfs_test_context';
 
@@ -18,7 +18,8 @@ final class TestVoiceTool implements VoiceToolInterface
     {
         return 'Returns test-only read-only Voice Consultant context from YFS. '
             .'Not production show, customer, or CRM data. '
-            .'Use when the caller asks about the YFS test event.';
+            .'Use when the caller asks for the latest YFS test status or another fact that is not already in session context. '
+            .'Do not use when the YFS Test Event is already preloaded in session context.';
     }
 
     public function inputSchema(): array
@@ -55,5 +56,16 @@ final class TestVoiceTool implements VoiceToolInterface
         }
 
         return $result;
+    }
+
+    public function metadata(): VoiceToolMetadata
+    {
+        return new VoiceToolMetadata(
+            category: 'lookup',
+            estimatedLatency: 'short',
+            fillerEnabled: true,
+            readOnly: true,
+            source: 'yfs_ai_test',
+        );
     }
 }

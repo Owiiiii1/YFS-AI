@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\MetaInstagramDeauthorizeController;
 use App\Http\Controllers\Api\MetaInstagramWebhookController;
 use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\VoiceRuntimeConfigController;
+use App\Http\Controllers\Api\VoiceSessionTurnController;
 use App\Http\Controllers\Api\VoiceToolController;
 use App\Http\Middleware\AuthenticateVoiceRuntime;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,8 @@ Route::get('/internal/voice-runtime/config', VoiceRuntimeConfigController::class
     ->name('api.internal.voice-runtime.config');
 
 Route::middleware(AuthenticateVoiceRuntime::class)->group(function () {
+    Route::post('/internal/voice/session/turn', VoiceSessionTurnController::class)
+        ->name('api.internal.voice.session.turn');
     Route::get('/internal/voice/tools', [VoiceToolController::class, 'catalog'])
         ->name('api.internal.voice.tools.catalog');
     Route::post('/internal/voice/tools/execute', [VoiceToolController::class, 'execute'])

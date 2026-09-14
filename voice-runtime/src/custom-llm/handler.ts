@@ -6,8 +6,9 @@ import type { VoiceConfigSource } from "../laravel/config-store.js";
 import { isAbortError } from "../llm/abort.js";
 import { createLlmProvider, UnsupportedLlmProviderError, type LlmProvider } from "../llm/provider.js";
 import { log } from "../logger.js";
-import { mergeChatTools, YFS_VOICE_TOOLS } from "../voice-tools/catalog.js";
+import { mergeChatTools, yfsToolsAllowed } from "../voice-tools/catalog.js";
 import { createLaravelExecuteVoiceTool, type ExecuteVoiceTool } from "../voice-tools/laravel-client.js";
+import { createLaravelFetchSessionTurn, type FetchSessionTurn } from "../voice-tools/session-client.js";
 import { isAuthorizedCustomLlm } from "./auth.js";
 import {
   BodyTooLargeError,
@@ -15,6 +16,7 @@ import {
   MalformedJsonError,
   parseChatCompletionBody,
   readRequestBody,
+  lastUserText,
 } from "./request.js";
 import { writeSseData, writeSseDone, writeSseHeaders } from "./sse.js";
 import { streamWithServerTools } from "./tool-loop.js";
@@ -22,6 +24,7 @@ import { streamWithServerTools } from "./tool-loop.js";
 export type CustomLlmHandlerOptions = {
   createProvider?: (config: LaravelVoiceConfig["llm"], timeoutMs: number) => LlmProvider;
   executeVoiceTool?: ExecuteVoiceTool;
+  fetchSessionTurn?: FetchSessionTurn;
 };
 
 function sendJson(res: ServerResponse, status: number, body: Record<string, unknown>): void {
@@ -140,7 +143,30 @@ export async function handleCustomLlm(
     }
   };
 
-  const tools = mergeChatTools(parsed.tools, YFS_VOICE_TOOLS);
+  const fetchSessionTurn = options.fetchSessionTurn ?? createLaravelFetchSessionTurn(infra);
+  let sessionTurn = null;
+  try {
+    sessionTurn = await fetchSessionTurn({
+      sessionId: parsed.user || requestId,
+      userText: lastUserText(parsed.messages),
+      requestId,
+    }, abort.signal);
+  } catch {
+    sessionTurn = null;
+  }
+
+  let messages = parsed.messages;
+  if (sessionTurn?.systemPrompt) {
+    messages = [
+      { role: "system", content: sessionTurn.systemPrompt },
+      ...parsed.messages.slice(1),
+    ];
+  }
+
+  const tools = mergeChatTools(
+    parsed.tools,
+    yfsToolsAllowed(sessionTurn ? sessionTurn.allowedTools : null),
+  );
   const executeVoiceTool = options.executeVoiceTool ?? createLaravelExecuteVoiceTool(infra);
 
   writeSseHeaders(res);
@@ -163,12 +189,13 @@ export async function handleCustomLlm(
       res,
       signal: abort.signal,
       model,
-      messages: parsed.messages,
+      messages,
       temperature: parsed.temperature,
       maxTokens: parsed.maxTokens,
       user: parsed.user,
       tools,
       toolChoice: parsed.toolChoice,
+      fillers: sessionTurn?.fillers,
     });
 
     if (!res.writableEnded) {
@@ -181,8 +208,15 @@ export async function handleCustomLlm(
       model,
       status: abort.signal.aborted || loop.status === "aborted" ? "aborted" : "ok",
       rounds: loop.rounds,
+      path: loop.path,
+      filler: loop.filler,
       latencyMs: Date.now() - startedAt,
     });
+    if (loop.path === "fast") {
+      log.info("voice.response.fast_path", { requestId, rounds: loop.rounds });
+    } else {
+      log.info("voice.response.tool_path", { requestId, rounds: loop.rounds, filler: loop.filler });
+    }
   } catch (error) {
     if (isAbortError(error) || abort.signal.aborted) {
       log.info("custom-llm.stream.cancelled", {

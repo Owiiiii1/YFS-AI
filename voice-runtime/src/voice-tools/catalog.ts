@@ -14,7 +14,8 @@ export const YFS_VOICE_TOOLS: ChatCompletionFunctionTool[] = [
       description:
         "Returns test-only read-only Voice Consultant context from YFS. "
         + "Not production show, customer, or CRM data. "
-        + "Use when the caller asks about the YFS test event.",
+        + "Use when the caller asks for the latest YFS test status or another fact that is not already in session context. "
+        + "Do not use when the YFS Test Event is already preloaded in session context.",
       parameters: {
         type: "object",
         properties: {
@@ -33,6 +34,13 @@ export const YFS_SERVER_TOOL_NAMES = new Set(YFS_VOICE_TOOLS.map((tool) => tool.
 
 export function isYfsServerTool(name: string): boolean {
   return YFS_SERVER_TOOL_NAMES.has(name);
+}
+
+export function yfsToolsAllowed(allowed: string[] | null): ChatCompletionFunctionTool[] {
+  if (allowed === null) {
+    return YFS_VOICE_TOOLS;
+  }
+  return YFS_VOICE_TOOLS.filter((tool) => allowed.includes(tool.function.name));
 }
 
 export function mergeChatTools(

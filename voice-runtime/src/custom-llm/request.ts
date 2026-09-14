@@ -223,3 +223,13 @@ export function parseChatCompletionBody(raw: Buffer, maxMessages: number): Norma
     toolChoice: body.tool_choice,
   };
 }
+
+export function lastUserText(messages: ChatCompletionMessageParam[]): string {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "user" && "content" in message && typeof message.content === "string") {
+      return message.content;
+    }
+  }
+  return "";
+}

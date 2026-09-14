@@ -10,9 +10,11 @@ import { extractGeminiTextParts } from "../src/llm/gemini-convert.js";
 import {
   isYfsServerTool,
   mergeChatTools,
+  yfsToolsAllowed,
   YFS_TEST_TOOL_NAME,
   YFS_VOICE_TOOLS,
 } from "../src/voice-tools/catalog.js";
+import { normalizeFillerText } from "../src/custom-llm/filler.js";
 import { executeLaravelVoiceTool, VoiceToolClientError } from "../src/voice-tools/laravel-client.js";
 import type { InfraConfig } from "../src/config/env.js";
 
@@ -159,4 +161,16 @@ test("tool result message uses the function name for Gemini functionResponse", (
   assert.equal(message.role, "tool");
   assert.equal("name" in message ? message.name : "", YFS_TEST_TOOL_NAME);
   assert.equal("tool_call_id" in message ? message.tool_call_id : "", "call_1");
+});
+
+test("fast path omits YFS tools when Laravel allowed_tools is empty", () => {
+  assert.deepEqual(yfsToolsAllowed([]), []);
+  assert.equal(yfsToolsAllowed(null).some((tool) => tool.function.name === YFS_TEST_TOOL_NAME), true);
+  assert.equal(yfsToolsAllowed([YFS_TEST_TOOL_NAME])[0]?.function.name, YFS_TEST_TOOL_NAME);
+});
+
+test("filler text always ends with ElevenLabs buffer ellipsis and space", () => {
+  assert.equal(normalizeFillerText("One moment, let me check"), "One moment, let me check... ");
+  assert.equal(normalizeFillerText("One moment, let me check..."), "One moment, let me check... ");
+  assert.equal(normalizeFillerText("One moment, let me check... "), "One moment, let me check... ");
 });

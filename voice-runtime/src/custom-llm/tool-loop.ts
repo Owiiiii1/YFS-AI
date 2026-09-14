@@ -15,6 +15,8 @@ import {
   type AccumulatedToolCall,
 } from "./chunks.js";
 import { writeSseData } from "./sse.js";
+import { selectFiller, writeFillerSse } from "./filler.js";
+import type { VoiceFillerHint } from "../voice-tools/session-client.js";
 
 const MAX_TOOL_ROUNDS = 3;
 
@@ -32,6 +34,7 @@ export type ToolAwareStreamParams = {
   tools?: ChatCompletionTool[];
   toolChoice?: unknown;
   maxRounds?: number;
+  fillers?: Record<string, VoiceFillerHint>;
 };
 
 function writable(res: ServerResponse): boolean {
@@ -75,14 +78,18 @@ async function executeYfsCalls(
 export async function streamWithServerTools(params: ToolAwareStreamParams): Promise<{
   status: "ok" | "aborted";
   rounds: number;
+  path: "fast" | "tool";
+  filler: boolean;
 }> {
   const maxRounds = params.maxRounds ?? MAX_TOOL_ROUNDS;
   let messages = params.messages;
   let rounds = 0;
+  let usedTools = false;
+  let usedFiller = false;
 
   for (let round = 0; round < maxRounds; round += 1) {
     if (params.signal.aborted || !writable(params.res)) {
-      return { status: "aborted", rounds };
+      return { status: "aborted", rounds, path: usedTools ? "tool" : "fast", filler: usedFiller };
     }
 
     rounds = round + 1;
@@ -102,9 +109,9 @@ export async function streamWithServerTools(params: ToolAwareStreamParams): Prom
     let assistantText = "";
 
     for await (const chunk of stream) {
-      if (params.signal.aborted || !writable(params.res)) {
-        return { status: "aborted", rounds };
-      }
+    if (params.signal.aborted || !writable(params.res)) {
+      return { status: "aborted", rounds, path: usedTools ? "tool" : "fast", filler: usedFiller };
+    }
       const delta = inspectOpenAiChunk(chunk);
       if (delta.toolCalls.length > 0) {
         accumulateToolCalls(acc, delta.toolCalls);
@@ -120,7 +127,7 @@ export async function streamWithServerTools(params: ToolAwareStreamParams): Prom
     }
 
     if (params.signal.aborted || !writable(params.res)) {
-      return { status: "aborted", rounds };
+      return { status: "aborted", rounds, path: usedTools ? "tool" : "fast", filler: usedFiller };
     }
 
     const completed = [...acc.values()].filter((call) => call.name);
@@ -130,12 +137,14 @@ export async function streamWithServerTools(params: ToolAwareStreamParams): Prom
     if (yfsCalls.length === 0) {
       for (const chunk of held) {
         if (!writable(params.res)) {
-          return { status: "aborted", rounds };
+          return { status: "aborted", rounds, path: usedTools ? "tool" : "fast", filler: usedFiller };
         }
         writeSseData(params.res, chunk);
       }
-      return { status: "ok", rounds };
+      return { status: "ok", rounds, path: usedTools ? "tool" : "fast", filler: usedFiller };
     }
+
+    usedTools = true;
 
     if (otherCalls.length > 0) {
       log.warn("voice.tool.mixed_calls", {
@@ -143,6 +152,14 @@ export async function streamWithServerTools(params: ToolAwareStreamParams): Prom
         yfs: yfsCalls.map((call) => call.name),
         other: otherCalls.map((call) => call.name),
       });
+    }
+
+    if (!assistantText.trim()) {
+      const filler = selectFiller(params.fillers, yfsCalls[0]?.name ?? "");
+      if (filler) {
+        writeFillerSse(params.res, params.model, filler, params.requestId);
+        usedFiller = true;
+      }
     }
 
     const toolMessages = await executeYfsCalls(yfsCalls, params.executeVoiceTool, params.requestId, params.signal);
@@ -157,5 +174,5 @@ export async function streamWithServerTools(params: ToolAwareStreamParams): Prom
     requestId: params.requestId,
     rounds,
   });
-  return { status: "ok", rounds };
+  return { status: "ok", rounds, path: usedTools ? "tool" : "fast", filler: usedFiller };
 }

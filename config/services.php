@@ -70,6 +70,7 @@ return [
 
     'voice_runtime' => [
         'internal_token' => env('VOICE_RUNTIME_INTERNAL_TOKEN'),
+        'filler_enabled' => env('VOICE_FILLER_ENABLED', true),
     ],
 
     'young_fashion_show' => [
