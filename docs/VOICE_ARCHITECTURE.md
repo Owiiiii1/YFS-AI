@@ -96,6 +96,7 @@ ElevenLabs hosted/native LLM is **not** the business brain. The agent LLM is the
 - provider routing from Laravel config
 - streaming SSE
 - Gemini protocol conversion (OpenAI Chat Completions ↔ Gemini)
+- YFS server-side tool execution loop (Laravel Voice Orchestrator; test tool only)
 - cancellation / abort on client disconnect
 - OpenAI LLM provider remains implemented for a future `bot_runtime` switch; it is not the current production LLM
 
@@ -103,7 +104,7 @@ Listen: `127.0.0.1:3101`
 systemd: `yfs-voice-runtime`  
 nginx: `/voice-engine/` → that process (Laravel `location /` unchanged)
 
-### Laravel — **Current** for config; **Planned** for Voice Orchestrator
+### Laravel — **Current** for config and test-tool Voice Orchestrator
 
 **Current:**
 
@@ -111,19 +112,23 @@ nginx: `/voice-engine/` → that process (Laravel `location /` unchanged)
 - encrypted provider credentials in `ai_provider_settings`
 - ElevenLabs API key in Settings → ElevenLabs
 - internal config: `GET /api/internal/voice-runtime/config`
+- Voice Orchestrator test-tool execution: `POST /api/internal/voice/tools/execute`
+- test tool `get_current_yfs_test_context` (explicitly test-only data)
 
 **Planned:**
 
-- Voice Orchestrator
-- external data / tool layer
+- YFS Core / Bitrix24 Voice tools
+- production business tools
 - persistence and post-call workflows
 - Telegram notifications for voice calls
 
-### Gemini — **Current** for text; **Planned** for tool decisions
+### Gemini — **Current** for text; tool-calling loop implemented, live phone proof **Unverified**
 
 **Current:** call-time reasoning and text generation behind Custom LLM.
 
-**Planned:** function / tool decisions. Tool calling is not production-proven on a live call.
+**Current (code path, not live-call confirmed):** when Gemini returns a YFS function call, voice-runtime executes it via Laravel Voice Orchestrator, feeds the JSON result back to Gemini, and streams the final text to ElevenLabs. ElevenLabs does not execute the YFS business tool.
+
+**Planned / Unverified:** production-proven tool calling on a real telephone call. YFS Core / Bitrix tools.
 
 ---
 
@@ -167,21 +172,41 @@ Instagram/Facebook `prompt_analysis` is a separate role. It is not the voice LLM
 
 ---
 
-## 5. Next architectural part — Voice Orchestrator
+## 5. Voice Orchestrator
 
-**Planned. Not implemented.**
+**Current** only for test-tool execution. YFS Core / Bitrix / production business tools remain **Planned**. Live telephone tool calling remains **Planned / Unverified** until a real inbound call proves it.
 
 ```text
 ElevenLabs
   ↓
-Custom LLM gateway          (Current)
+Custom LLM gateway                Current
   ↓
-Voice Orchestrator          (Planned, Laravel)
+Gemini                            Current (text + functionCall)
   ↓
-Gemini                      (Current as LLM; Planned for tool use)
+Laravel Voice Orchestrator        Current: test tool only
+  GET  /api/internal/voice/tools
+  POST /api/internal/voice/tools/execute
   ↓
-Laravel tools / services    (Planned)
+test tool get_current_yfs_test_context
+  ↓
+tool result → Gemini → SSE → ElevenLabs
 ```
+
+Server-side loop (implemented in voice-runtime; not executed by ElevenLabs):
+
+1. Inject YFS tool schema into the LLM request (`get_current_yfs_test_context`).
+2. If Gemini returns that function call, POST it to Laravel Voice Orchestrator.
+3. Append the JSON result as a tool/function response.
+4. Call Gemini again.
+5. Stream only the final assistant text back to ElevenLabs as OpenAI-compatible SSE.
+
+Temporary gateway guardrail (not production prompt architecture): if the caller asks “what is the YFS test event”, Gemini must call `get_current_yfs_test_context`.
+
+Current tool:
+
+| Tool | Status | Notes |
+| --- | --- | --- |
+| `get_current_yfs_test_context` | **Current** (code). Live call **Unverified**. | Read-only synthetic test payload. Not a production event. |
 
 Future tools/services (all **Planned**, not live on a production call):
 
@@ -277,7 +302,7 @@ Instagram bot prompts must not be reused as the Voice prompt.
 
 ## 9. Source precedence
 
-**Planned concept.** Not implemented; no live tool results yet.
+**Planned concept.** Test-tool results exist; YFS Core / Bitrix results do not.
 
 When tools exist:
 
@@ -319,9 +344,9 @@ ElevenLabs voice layer + YFS Custom LLM + Gemini.
 
 The following are **not** current:
 
-- Laravel Voice Orchestrator
 - YFS Core or Bitrix24 Voice tools
+- production business tools beyond the test tool
+- production-proven tool calling on a live telephone call (code path exists; live proof pending)
 - post-call persistence / analysis / Telegram for calls
-- production-proven tool calling on a live call
 - Voice admin (Calls / Follow-ups) beyond a Call center placeholder
 - `voice_*` database tables

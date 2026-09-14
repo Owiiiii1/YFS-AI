@@ -5,6 +5,8 @@ import type { LaravelVoiceConfig } from "../src/laravel/config-client.js";
 import type { VoiceConfigSource, VoiceRuntimeSnapshot } from "../src/laravel/config-store.js";
 import type { ChatStreamParams, LlmProvider } from "../src/llm/types.js";
 import { createHttpServer } from "../src/server/http.js";
+import { YFS_TEST_TOOL_NAME } from "../src/voice-tools/catalog.js";
+import type { ExecuteVoiceTool } from "../src/voice-tools/laravel-client.js";
 
 const SECRET = "test-voice-llm-secret";
 const OPENAI_KEY = "sk-test-openai-not-real";
@@ -132,20 +134,23 @@ async function start(options: {
   infra?: Partial<InfraConfig>;
   stream?: AsyncIterable<unknown> | ((signal: AbortSignal) => AsyncIterable<unknown>);
   createProvider?: (config: LaravelVoiceConfig["llm"], timeoutMs: number) => LlmProvider;
+  executeVoiceTool?: ExecuteVoiceTool;
   useRealProviderFactory?: boolean;
 } = {}): Promise<Started> {
   const config = options.config === undefined ? providers() : options.config;
+  const handlerOptions = options.useRealProviderFactory
+    ? { executeVoiceTool: options.executeVoiceTool }
+    : {
+        createProvider: options.createProvider ?? ((llm) => mockProvider(
+          options.stream ?? defaultStream(),
+          llm.provider || "openai",
+        )),
+        executeVoiceTool: options.executeVoiceTool,
+      };
   const server = createHttpServer(
     storeFor(config, options.state),
     infra(options.infra),
-    options.useRealProviderFactory
-      ? {}
-      : {
-          createProvider: options.createProvider ?? ((llm) => mockProvider(
-            options.stream ?? defaultStream(),
-            llm.provider || "openai",
-          )),
-        },
+    handlerOptions,
   );
   const started = await listen(server);
   closers.push(started.close);
@@ -420,4 +425,232 @@ test("no secrets in logs", async () => {
   assert.equal(joined.includes(GEMINI_KEY), false);
   assert.equal(joined.includes("Authorization"), false);
   assert.match(joined, /custom-llm\.stream\.started|custom-llm\.stream\.completed/);
+});
+
+function geminiFunctionCallStream(): AsyncIterable<unknown> {
+  return (async function* mock() {
+    yield {
+      id: "chatcmpl-tool",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "gemini-3.8-flash",
+      choices: [{
+        index: 0,
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: "call_yfs_test_1",
+            type: "function",
+            function: { name: YFS_TEST_TOOL_NAME, arguments: "{}" },
+          }],
+        },
+        finish_reason: null,
+      }],
+    };
+    yield {
+      id: "chatcmpl-tool",
+      object: "chat.completion.chunk",
+      created: 1,
+      model: "gemini-3.8-flash",
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+    };
+  })();
+}
+
+function finalTextStream(text: string): AsyncIterable<unknown> {
+  return (async function* mock() {
+    yield {
+      id: "chatcmpl-final",
+      object: "chat.completion.chunk",
+      created: 2,
+      model: "gemini-3.8-flash",
+      choices: [{ index: 0, delta: { role: "assistant", content: text }, finish_reason: null }],
+    };
+    yield {
+      id: "chatcmpl-final",
+      object: "chat.completion.chunk",
+      created: 2,
+      model: "gemini-3.8-flash",
+      choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+    };
+  })();
+}
+
+test("Gemini functionCall is executed by Laravel and final text is streamed without exposing YFS tool_calls", async () => {
+  let rounds = 0;
+  let secondMessages: Array<{ role?: string; name?: string; tool_call_id?: string; content?: unknown }> = [];
+  let firstTools: string[] = [];
+  const executed: Array<{ name: string; args: Record<string, unknown> }> = [];
+
+  const { base } = await start({
+    config: providers({ provider: "gemini", model: "gemini-3.8-flash", apiKey: GEMINI_KEY }),
+    executeVoiceTool: async (name, args) => {
+      executed.push({ name, args });
+      return {
+        source: "yfs_ai_test",
+        status: "ok",
+        message: "Voice tool calling is working",
+        event_name: "YFS Test Event",
+        availability: "test-only",
+      };
+    },
+    createProvider: () => ({
+      providerName: "gemini",
+      async streamChatCompletion(params) {
+        rounds += 1;
+        if (rounds === 1) {
+          firstTools = (params.tools ?? []).map((tool) => tool.type === "function" ? tool.function.name : "");
+          return geminiFunctionCallStream();
+        }
+        secondMessages = params.messages.map((message) => ({
+          role: message.role,
+          name: "name" in message && typeof message.name === "string" ? message.name : undefined,
+          tool_call_id: "tool_call_id" in message && typeof message.tool_call_id === "string" ? message.tool_call_id : undefined,
+          content: "content" in message ? message.content : undefined,
+        }));
+        return finalTextStream("The YFS test event is test-only. Voice tool calling is working.");
+      },
+    }),
+  });
+
+  const response = await post(base, {
+    body: chatBody({
+      messages: [
+        { role: "system", content: "Agent prompt from ElevenLabs." },
+        { role: "user", content: "What is the YFS test event?" },
+      ],
+    }),
+  });
+  const text = await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(rounds, 2);
+  assert.equal(executed.length, 1);
+  assert.equal(executed[0]?.name, YFS_TEST_TOOL_NAME);
+  assert.ok(firstTools.includes(YFS_TEST_TOOL_NAME));
+  assert.ok(secondMessages.some((message) => message.role === "tool" && message.name === YFS_TEST_TOOL_NAME));
+  assert.ok(secondMessages.some((message) => {
+    return message.role === "tool" && typeof message.content === "string" && message.content.includes("YFS Test Event");
+  }));
+  assert.match(text, /Voice tool calling is working/);
+  assert.match(text, /data: \[DONE\]/);
+  assert.equal(text.includes(`"name":"${YFS_TEST_TOOL_NAME}"`), false);
+  assert.equal(text.includes(GEMINI_KEY), false);
+});
+
+test("tool error is fed back to Gemini and does not crash the process", async () => {
+  let rounds = 0;
+  let sawErrorResult = false;
+  const { base } = await start({
+    executeVoiceTool: async () => {
+      throw new Error("secret-orchestrator-token-must-not-leak");
+    },
+    createProvider: () => ({
+      providerName: "gemini",
+      async streamChatCompletion(params) {
+        rounds += 1;
+        if (rounds === 1) {
+          return geminiFunctionCallStream();
+        }
+        const tool = params.messages.find((message) => message.role === "tool");
+        const content = tool && "content" in tool ? String(tool.content) : "";
+        sawErrorResult = content.includes("tool_failed") && !content.includes("secret-orchestrator-token-must-not-leak");
+        return finalTextStream("I could not look that up right now.");
+      },
+    }),
+  });
+
+  const response = await post(base);
+  const text = await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(rounds, 2);
+  assert.equal(sawErrorResult, true);
+  assert.match(text, /I could not look that up right now/);
+  assert.equal(text.includes("secret-orchestrator-token-must-not-leak"), false);
+  const health = await fetch(`${base}/health`);
+  assert.equal(health.status, 200);
+});
+
+test("disconnect aborts during Laravel tool execution", async () => {
+  let aborted = false;
+  const { base } = await start({
+    executeVoiceTool: async (_name, _args, _requestId, signal) => {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("tool was not aborted")), 2_000);
+        signal.addEventListener("abort", () => {
+          aborted = true;
+          clearTimeout(timer);
+          const error = new Error("aborted");
+          error.name = "AbortError";
+          reject(error);
+        });
+      });
+      return {};
+    },
+    createProvider: () => ({
+      providerName: "gemini",
+      async streamChatCompletion() {
+        return geminiFunctionCallStream();
+      },
+    }),
+  });
+
+  const controller = new AbortController();
+  const response = await fetch(`${base}/v1/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${SECRET}`,
+      "Content-Type": "application/json",
+    },
+    body: chatBody(),
+    signal: controller.signal,
+  });
+  assert.equal(response.status, 200);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  controller.abort();
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(aborted, true);
+});
+
+test("ElevenLabs native tools are still forwarded and not executed by Laravel", async () => {
+  let executed = 0;
+  const { base } = await start({
+    executeVoiceTool: async () => {
+      executed += 1;
+      return {};
+    },
+    stream: (async function* () {
+      yield {
+        id: "chatcmpl-end",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "gpt-test-runtime",
+        choices: [{
+          index: 0,
+          delta: {
+            tool_calls: [{
+              index: 0,
+              id: "call_end_1",
+              type: "function",
+              function: { name: "end_call", arguments: "{}" },
+            }],
+          },
+          finish_reason: null,
+        }],
+      };
+      yield {
+        id: "chatcmpl-end",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "gpt-test-runtime",
+        choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+      };
+    })(),
+  });
+
+  const response = await post(base);
+  const text = await response.text();
+  assert.equal(response.status, 200);
+  assert.equal(executed, 0);
+  assert.match(text, /"name":"end_call"/);
+  assert.match(text, /data: \[DONE\]/);
 });

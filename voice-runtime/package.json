@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "tsx --test test/custom-llm.test.ts test/llm-provider.test.ts",
+    "test": "tsx --test test/custom-llm.test.ts test/llm-provider.test.ts test/voice-tools.test.ts",
     "smoke": "node dist/smoke.js",
     "smoke:llm": "node dist/smoke-custom-llm.js"
   },

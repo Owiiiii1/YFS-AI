@@ -9,7 +9,7 @@ Realtime production path is confirmed by a successful inbound telephone call:
 
 ElevenLabs voice layer + YFS Custom LLM gateway + Gemini.
 
-Laravel Voice Orchestrator, tools, post-call pipeline, and Voice admin: **Planned / not started**.
+Laravel Voice Orchestrator exists for a **test tool only**. YFS Core / Bitrix tools, post-call pipeline, and Voice admin remain **Planned**. Live telephone tool calling is **Unverified**.
 
 Related documents:
 
@@ -29,7 +29,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Realtime path **Current** (live inbound call confirmed). Voice Orchestrator / tools / post-call / admin **Planned**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Realtime path **Current** (live inbound call confirmed). Voice Orchestrator **Current** for test-tool execution only. YFS Core / Bitrix / post-call / admin **Planned**. Live tool calling **Unverified**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
 **Current (see `docs/VOICE_ARCHITECTURE.md`):**
@@ -42,10 +42,10 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 
 **Planned (not implemented):**
 
-- Voice Orchestrator
-- YFS Core / Bitrix24 tools
+- YFS Core / Bitrix24 Voice tools
+- production business tools
 - post-call `voice_calls` persistence, audio archive, transcript, analysis, Telegram
-- Voice prompt architecture
+- Voice prompt architecture (the temporary test-event tool rule is not that architecture)
 - live transfer / callback workflows in Laravel
 
 Voice Assistant and Sales Agent must not share one prompt or one agent configuration.
@@ -73,7 +73,7 @@ Voice Assistant must:
 13. Decide whether an operator action is required.
 14. Show the call and follow-up in the YFS AI admin.
 
-Realtime items 1–2 are **Current** at the voice-layer level (ElevenLabs + Custom LLM + Gemini). Items 5–14 are **Planned** unless noted in `docs/VOICE_ARCHITECTURE.md`.
+Realtime items 1–2 are **Current** at the voice-layer level (ElevenLabs + Custom LLM + Gemini). Item 5 is **Current** only for the test tool `get_current_yfs_test_context` (live phone proof **Unverified**). Items 6–14 are **Planned** unless noted in `docs/VOICE_ARCHITECTURE.md`.
 
 It is **not** an outbound sales caller. That is Phase 3.
 
@@ -109,7 +109,7 @@ Rules:
 
 Confirmed. Details: `docs/VOICE_ARCHITECTURE.md`.
 
-Not part of 2.1 (still **Planned**): Laravel Voice module, tools, post-call, admin.
+Not part of 2.1 (still **Planned** except the test-tool orchestrator in 2.3): Laravel Voice module persistence, post-call, admin.
 
 ### Phase 2.2 — Laravel Voice Core — **Planned**
 
@@ -117,9 +117,9 @@ Create a **separate** Voice Assistant module. Conceptual entities only until mig
 
 See [§5 Planned data](#5-planned-data-not-implemented).
 
-### Phase 2.3 — Knowledge and tools — **Planned**
+### Phase 2.3 — Knowledge and tools — **Current** for test tool only; production tools **Planned**
 
-Laravel Voice Orchestrator + tools. The agent must not receive a huge static prompt filled with changing dates, prices, or availability.
+Laravel Voice Orchestrator executes `get_current_yfs_test_context` server-side. YFS Core / Bitrix / production business tools are not connected. Live telephone tool calling is **Unverified**.
 
 See [§6 Knowledge and tools](#6-knowledge-and-tools-planned).
 
@@ -211,11 +211,13 @@ Secrets are **not** stored as plaintext in this table and are not documented her
 
 ---
 
-## 6. Knowledge and tools (Planned)
+## 6. Knowledge and tools (Planned production tools; test tool Current)
 
-**Not implemented.** Do not treat this as a live integration.
+Production YFS Core / Bitrix Voice tools are **not implemented**. Do not treat test-tool results as live business data.
 
-When built, the Voice Agent must call a Laravel tool instead of guessing when information is dynamic or needs confirmation.
+**Current (test only):** `get_current_yfs_test_context` via `POST /api/internal/voice/tools/execute`. Returns synthetic `source: yfs_ai_test` payload. Live inbound-call proof is **Unverified**.
+
+When production tools are built, the Voice Agent must call a Laravel tool instead of guessing when information is dynamic or needs confirmation.
 
 Planned tool/service areas:
 
@@ -258,7 +260,7 @@ If a tool fails or returns unknown, the agent says it does not have that informa
 
 Heavy or slow work must not sit on the realtime tool path.
 
-Gateway-level OpenAI-shaped `tools` passthrough to Gemini exists in voice-runtime. That is **not** production-proven YFS/Bitrix tool calling on a live call.
+Gateway-level OpenAI-shaped `tools` conversion to Gemini exists in voice-runtime. YFS test-tool execution is server-side (Laravel). That is **not** production-proven YFS/Bitrix tool calling on a live call.
 
 ---
 
@@ -570,8 +572,8 @@ Already decided and documented in `docs/VOICE_ARCHITECTURE.md` (do not reopen in
 
 Still out of scope until explicitly started:
 
-- Voice Orchestrator implementation
 - YFS Core / Bitrix Voice tools
+- production business tools beyond the test tool
 - post-call migrations and jobs
 - changing Instagram / Facebook / Telegram product behaviour
 - Phase 3 Sales Agent

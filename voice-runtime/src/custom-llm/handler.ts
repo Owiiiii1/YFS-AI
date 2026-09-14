@@ -6,6 +6,8 @@ import type { VoiceConfigSource } from "../laravel/config-store.js";
 import { isAbortError } from "../llm/abort.js";
 import { createLlmProvider, UnsupportedLlmProviderError, type LlmProvider } from "../llm/provider.js";
 import { log } from "../logger.js";
+import { mergeChatTools, YFS_VOICE_TOOLS } from "../voice-tools/catalog.js";
+import { createLaravelExecuteVoiceTool, type ExecuteVoiceTool } from "../voice-tools/laravel-client.js";
 import { isAuthorizedCustomLlm } from "./auth.js";
 import {
   BodyTooLargeError,
@@ -15,9 +17,11 @@ import {
   readRequestBody,
 } from "./request.js";
 import { writeSseData, writeSseDone, writeSseHeaders } from "./sse.js";
+import { streamWithServerTools } from "./tool-loop.js";
 
 export type CustomLlmHandlerOptions = {
   createProvider?: (config: LaravelVoiceConfig["llm"], timeoutMs: number) => LlmProvider;
+  executeVoiceTool?: ExecuteVoiceTool;
 };
 
 function sendJson(res: ServerResponse, status: number, body: Record<string, unknown>): void {
@@ -136,6 +140,9 @@ export async function handleCustomLlm(
     }
   };
 
+  const tools = mergeChatTools(parsed.tools, YFS_VOICE_TOOLS);
+  const executeVoiceTool = options.executeVoiceTool ?? createLaravelExecuteVoiceTool(infra);
+
   writeSseHeaders(res);
   res.once("close", onClientDisconnect);
   log.info("custom-llm.stream.started", {
@@ -144,31 +151,25 @@ export async function handleCustomLlm(
     model,
     incomingModel: parsed.incomingModel || "none",
     messageCount: parsed.messageCount,
-    hasTools: parsed.hasTools,
+    hasTools: Boolean(tools?.length),
     stream: parsed.stream,
   });
 
   try {
-    const stream = await llm.streamChatCompletion(
-      {
-        model,
-        messages: parsed.messages,
-        temperature: parsed.temperature,
-        maxTokens: parsed.maxTokens,
-        tools: parsed.tools,
-        toolChoice: parsed.toolChoice,
-        user: parsed.user,
-      },
-      abort.signal,
-    );
-
-    for await (const chunk of stream) {
-      if (res.writableEnded || !res.writable) {
-        abort.abort();
-        break;
-      }
-      writeSseData(res, chunk);
-    }
+    const loop = await streamWithServerTools({
+      llm,
+      executeVoiceTool,
+      requestId,
+      res,
+      signal: abort.signal,
+      model,
+      messages: parsed.messages,
+      temperature: parsed.temperature,
+      maxTokens: parsed.maxTokens,
+      user: parsed.user,
+      tools,
+      toolChoice: parsed.toolChoice,
+    });
 
     if (!res.writableEnded) {
       writeSseDone(res);
@@ -178,7 +179,8 @@ export async function handleCustomLlm(
       requestId,
       provider: llm.providerName,
       model,
-      status: abort.signal.aborted ? "aborted" : "ok",
+      status: abort.signal.aborted || loop.status === "aborted" ? "aborted" : "ok",
+      rounds: loop.rounds,
       latencyMs: Date.now() - startedAt,
     });
   } catch (error) {
