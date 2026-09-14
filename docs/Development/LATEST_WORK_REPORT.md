@@ -19,7 +19,9 @@ After stripping `additionalProperties`, the follow-up request failed until `thou
 
 ## Commit
 
-Recorded after `git commit` / `git push origin main`.
+`0555a7ec414fdd052565ab8d998be625e2288950` on `main`
+
+Fix Gemini 400 on Voice tools by sanitizing function schemas.
 
 ## Files changed
 
