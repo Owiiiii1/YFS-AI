@@ -12,7 +12,9 @@ Backend adapter is live. This repo did **not** paste the URL into ElevenLabs or 
 
 ## Commit
 
-See git history on `main` after push.
+`1cad78d` on `main`
+
+Add ElevenLabs conversation initiation webhook adapter for admin prompts.
 
 ## Architecture
 
