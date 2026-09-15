@@ -48,7 +48,7 @@ class VoiceContextEndpointDatabaseTest extends TestCase
         $this->assertStringContainsString('Use the app first.', $payload['prompt']);
         $this->assertStringContainsString('## General rules', $payload['prompt']);
         $this->assertStringContainsString('Customer Support Voice Assistant', $payload['prompt']);
-        $this->assertMatchesRegularExpression('/^v1-[a-f0-9]{64}$/', $payload['version']);
+        $this->assertMatchesRegularExpression('/^v2-[a-f0-9]{64}$/', $payload['version']);
         $this->assertNotFalse(strtotime($payload['generated_at']));
     }
 

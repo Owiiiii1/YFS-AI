@@ -442,12 +442,12 @@ JSON:
 ```json
 {
   "prompt": "...assembled prompt...",
-  "version": "v1-<sha256>",
+  "version": "v2-<sha256>",
   "generated_at": "<ISO-8601 UTC>"
 }
 ```
 
-## 15. ElevenLabs Conversation Initiation webhook adapter
+The assembled prompt starts with immutable runtime decision rules: A KNOWN POLICY FACT (answer from policy, no callback/contacts), B MISSING DYNAMIC FACT (no automatic escalation), C HUMAN REQUIRED (escalate/contacts only then). Policy section bodies are not rewritten. `version` includes wrapper version `v2`.
 
 **Current (backend adapter).** This repo does **not** change ElevenLabs agent settings. The operator pastes the URL and header into ElevenLabs.
 

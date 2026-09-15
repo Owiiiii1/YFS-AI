@@ -2,140 +2,87 @@
 
 ## Task
 
-Add a separate ElevenLabs Conversation Initiation Client Data webhook adapter. Reuse `VoiceAssistantPromptBuilder`. Do not change `/api/voice/context`, test-context, ElevenLabs UI, nginx, secrets, YFS Core, Bitrix, Twilio, Instagram, or Node voice-runtime.
+Correct YFS Voice Assistant decision rules so the bot answers from policy instead of escalating and collecting contacts after every question. Do not invent dynamic facts. Do not change initiation webhook contract, auth, ElevenLabs UI, YFS Core, or Bitrix.
 
 ## Status
 
 Done.
 
-Backend adapter is live. This repo did **not** paste the URL into ElevenLabs or change agent settings.
+Immutable `SYSTEM_WRAPPER` now contains runtime decision rules A/B/C. Wrapper version is `v2`, so the next inbound call through the existing initiation webhook receives the new prompt automatically.
+
+## Reason
+
+A live call showed the bot treating almost every question as missing information: it said it had no exact data, offered to check with the team, and asked for contact details.
+
+## Old problematic behaviour
+
+Missing dynamic data (and even known policy facts) were handled as if a human were required. Ordinary informational questions became a callback/lead flow.
+
+## New decision rules
+
+A. KNOWN POLICY FACT — answer from current bot settings. No team-check, callback, or contact collection.
+
+B. MISSING DYNAMIC FACT — say the specific fact is not available; give the policy next step (usually App / Help Center). Not automatic escalation.
+
+C. HUMAN REQUIRED — escalate / collect contacts only if the caller asks for a human/callback or policy requires a human.
+
+Hallucinations remain forbidden (times, dates, addresses, prices, tickets, brands, participant/CRM data).
+
+Client policy section bodies were not rewritten.
 
 ## Commit
 
-`1cad78d` on `main`
-
-Add ElevenLabs conversation initiation webhook adapter for admin prompts.
-
-## Architecture
-
-```text
-Admin
-  ↓
-voice_assistant_settings
-  ↓
-VoiceAssistantPromptBuilder
-  ↓
-authenticated POST /api/voice/elevenlabs/conversation-initiation
-  ↓
-ElevenLabs conversation_initiation_client_data
-  ↓
-Native Agent system prompt override
-```
-
-System Prompt for a new inbound call can come from YFS Admin → DB → PromptBuilder → initiation webhook → ElevenLabs, after the operator pastes the URL.
-
-Customer / language / YFS Core / Bitrix context is not connected.
-
-## Endpoint
-
-Production URL to paste into ElevenLabs:
-
-`https://ai.youngfashionshow.com/api/voice/elevenlabs/conversation-initiation`
-
-HTTP method: `POST`
-
-Header to create in ElevenLabs (value is `ELEVENLABS_TOOL_TOKEN`; do not put the value in git/docs):
-
-`Authorization: Bearer <token>`
-
-Same `AuthenticateElevenLabsTool` as tools and `/api/voice/context`. Empty token fails closed (401).
-
-Incoming JSON fields such as `caller_id`, `agent_id`, `called_number`, `call_sid`, and `conversation_id` are accepted and ignored.
-
-## Exact ElevenLabs response contract
-
-Official docs (Personalization / Twilio personalization): webhook response uses `conversation_initiation_client_data`. Current examples include `"type": "conversation_initiation_client_data"`, so this adapter sends `type`.
-
-Only the system prompt override is returned. `llm`, `first_message`, `tts`, and `dynamic_variables` are omitted so this adapter does not change those agent fields. Custom dynamic variables are not declared on our side yet.
-
-```json
-{
-  "type": "conversation_initiation_client_data",
-  "conversation_config_override": {
-    "agent": {
-      "prompt": {
-        "prompt": "<assembled Voice Assistant prompt>"
-      }
-    }
-  }
-}
-```
-
-`POST /api/voice/context` remains diagnostic JSON `{prompt, version, generated_at}` and was not changed.
+See git history on `main` after push.
 
 ## Files
 
-- `app/Services/ElevenLabs/ConversationInitiationClientData.php`
-- `app/Http/Controllers/Api/ElevenLabsConversationInitiationController.php`
-- `routes/api.php`
-- `tests/Unit/Voice/ConversationInitiationClientDataTest.php`
-- `tests/Feature/ElevenLabsConversationInitiationTest.php`
-- `tests/Feature/ElevenLabsConversationInitiationDatabaseTest.php`
+- `app/Services/Voice/Prompt/VoiceAssistantPromptBuilder.php` (`WRAPPER_VERSION` 1 → 2, stronger `SYSTEM_WRAPPER`)
+- `tests/Unit/Voice/VoiceAssistantPromptBuilderTest.php`
+- `tests/Feature/VoiceContextEndpointDatabaseTest.php` (version prefix)
 - `docs/VOICE_ARCHITECTURE.md`
-- `docs/VOICE_ASSISTANT.md`
-- `docs/ARCHITECTURE.md`
-- `docs/DATABASE.md`
-- `docs/EXTERNAL_SERVICES.md`
 - this report
+
+Initiation webhook controller, auth middleware, `/api/voice/context`, and `/api/voice/tools/test-context` were not changed.
 
 ## Tests
 
-`php artisan test --filter ConversationInitiationClientDataTest`: passed (contract + builder prompt, no extra keys).
+`php artisan test --filter VoiceAssistantPromptBuilderTest`: passed, including:
+- answer-yourself / known policy fact language in wrapper
+- missing dynamic data is not automatic escalation
+- contact collection only when human is required
+- do not invent dynamic facts
+- enabled/disabled ordering still works
+- section bodies not rewritten
+- version prefix `v2-` because the wrapper changed
 
-`php artisan test --filter ElevenLabsConversationInitiationTest`: passed (missing auth 401, wrong Bearer 401, voice-runtime token rejected, test-context unchanged).
+`php artisan test --filter ConversationInitiationClientDataTest`: passed.
 
-`php artisan test --filter ElevenLabsConversationInitiationDatabaseTest`: skipped (no `pdo_sqlite`). Covers valid 200, extra ElevenLabs fields, disabled sections omitted, sort_order, instruction change, no secrets.
+`php artisan test --filter ElevenLabsConversationInitiationTest`: passed.
 
 `php artisan test --filter VoiceContextEndpointTest`: passed.
 
 `php artisan test --filter ElevenLabsWebhookToolTest`: passed.
 
-Combined run: 14 passed, 4 skipped.
+`ElevenLabsConversationInitiationDatabaseTest` / `VoiceContextEndpointDatabaseTest`: skipped (no `pdo_sqlite`).
 
-## Production smoke result
+Combined run: 19 passed, 4 skipped.
 
-- Unauthenticated POST → `401 {"message":"Unauthorized"}`
-- Authenticated POST with extra telephony fields → `200`
-- Keys: `type`, `conversation_config_override`
-- `type` = `conversation_initiation_client_data`
-- Assembled prompt present (wrapper + General rules)
-- Token not present in response body
-- No `llm` override
-- Token value was not printed
+## Production result
 
-Route cache rebuilt. Three voice API routes present, including the new adapter.
+Local builder on production settings:
+- version starts with `v2-`
+- wrapper contains A/B/C rules
+- General rules section still present
+- initiation payload type/keys unchanged; override prompt matches builder output
 
-## What was not changed
+No nginx change. No ElevenLabs UI change. No secret change. Route cache not rebuilt (routes unchanged). Next inbound call fetches the new prompt through the existing initiation webhook.
 
-- ElevenLabs agent configuration / System Prompt in the ElevenLabs UI
-- `/api/voice/context`
-- `/api/voice/tools/test-context`
-- Node voice-runtime
-- Custom LLM
-- Twilio
-- Instagram/Facebook
-- YFS Core
-- Bitrix
-- nginx
-- secrets
+## Contract confirmation
 
-## Next manual step in ElevenLabs
+Initiation endpoint remains `POST /api/voice/elevenlabs/conversation-initiation`.
+Auth remains Bearer `ELEVENLABS_TOOL_TOKEN`.
+Response remains `{type, conversation_config_override.agent.prompt.prompt}` without extra fields.
 
-1. Conversation Initiation Client Data Webhook URL = `https://ai.youngfashionshow.com/api/voice/elevenlabs/conversation-initiation`
-2. Method POST
-3. Header `Authorization: Bearer <ELEVENLABS_TOOL_TOKEN>`
-4. Confirm Security → Overrides → System prompt stays enabled
-5. Confirm Security → Fetch initiation client data from a webhook stays enabled
-6. Place a real inbound call and confirm the agent uses the Admin Bot settings prompt
+## Next recommended step
 
-Do not connect customer lookup, YFS Core, or Bitrix until the next step.
+Place a real inbound call and confirm the agent answers Basic/Premium/VIP and routing questions from policy without asking for contacts. Then consider YFS Core for missing dynamic facts. Bitrix still not connected.

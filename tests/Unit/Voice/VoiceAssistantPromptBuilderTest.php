@@ -83,7 +83,42 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertSame($first->prompt, $second->prompt);
         $this->assertNotSame($first->generatedAt, $second->generatedAt);
         $this->assertNotSame($first->version, $changed->version);
-        $this->assertStringStartsWith('v1-', $first->version);
-        $this->assertMatchesRegularExpression('/^v1-[a-f0-9]{64}$/', $first->version);
+        $this->assertStringStartsWith('v2-', $first->version);
+        $this->assertMatchesRegularExpression('/^v2-[a-f0-9]{64}$/', $first->version);
+    }
+
+    #[Test]
+    public function runtime_decision_rules_are_in_the_immutable_wrapper(): void
+    {
+        $builder = new VoiceAssistantPromptBuilder;
+        $assembled = $builder->assemble([
+            [
+                'key' => 'general',
+                'title' => 'General rules',
+                'instructions' => 'Exact client wording.',
+                'sort_order' => 1,
+            ],
+        ]);
+
+        $prompt = $assembled->prompt;
+        $this->assertStringContainsString('A. KNOWN POLICY FACT', $prompt);
+        $this->assertStringContainsString('answer yourself', $prompt);
+        $this->assertStringContainsString('B. MISSING DYNAMIC FACT', $prompt);
+        $this->assertStringContainsString('not automatic escalation', $prompt);
+        $this->assertStringContainsString('C. HUMAN REQUIRED', $prompt);
+        $this->assertStringContainsString('collect contact details only when', $prompt);
+        $this->assertStringContainsString('Do not invent dynamic facts', $prompt);
+        $this->assertStringContainsString('Exact client wording.', $prompt);
+        $this->assertStringStartsWith('v2-', $assembled->version);
+    }
+
+    #[Test]
+    public function wrapper_version_is_part_of_the_prompt_version(): void
+    {
+        $builder = new VoiceAssistantPromptBuilder;
+        $assembled = $builder->assemble([]);
+
+        $this->assertMatchesRegularExpression('/^v2-[a-f0-9]{64}$/', $assembled->version);
+        $this->assertStringContainsString('KNOWN POLICY FACT', $assembled->prompt);
     }
 }
