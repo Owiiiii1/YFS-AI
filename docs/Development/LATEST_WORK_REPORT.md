@@ -12,7 +12,9 @@ Enabled `voice_assistant_settings` are assembled into a structured prompt. The N
 
 ## Commit
 
-See git history on `main` after push.
+`038014f` on `main`
+
+Expose Voice Assistant admin settings as an authenticated Native Agent context.
 
 ## Architecture
 
