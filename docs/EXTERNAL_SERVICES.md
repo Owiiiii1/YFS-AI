@@ -125,11 +125,12 @@ Details: `docs/VOICE_ARCHITECTURE.md`. Do not write account IDs, tokens, or API 
 | ElevenLabs Voice Agent | Realtime voice: telephony, STT, turn-taking, interruptions, languages/voices, TTS, conversation + audio ownership. Native Agent hosted LLM plus Laravel webhook tools is the selected Phase 2 path. Languages (EN / RU / UK with voice overrides) stay on the ElevenLabs side. | **Current**. Native webhook POC SUCCESS. Custom LLM remains experimental/fallback. |
 | Native Agent Laravel webhook tools | Authenticated `POST /api/voice/tools/test-context` smoke-test. Structured JSON back to the agent voice response. | **Current (POC SUCCESS)**. Confirmed via ElevenLabs Test Tool and a real voice conversation. Not YFS Core / Bitrix. |
 | Native Agent conversation context | Authenticated `POST /api/voice/context`. Assembled prompt from `voice_assistant_settings`. | **Current (diagnostic JSON)**. |
-| Native Agent conversation initiation adapter | Authenticated `POST /api/voice/elevenlabs/conversation-initiation`. Returns `conversation_initiation_client_data` with system prompt override. | **Current (backend adapter)**. Paste URL into ElevenLabs. Customer / YFS Core / Bitrix not connected. |
+| Native Agent conversation initiation adapter | Authenticated `POST /api/voice/elevenlabs/conversation-initiation`. Returns `conversation_initiation_client_data` with system prompt override and optional `agent.language` for known contacts. | **Current (backend adapter)**. Paste URL into ElevenLabs. YFS Core / Bitrix not connected. |
+| Native Agent post-call webhook | HMAC `POST /api/voice/elevenlabs/post-call`. Persists `voice_calls` / updates `voice_contacts.preferred_language`. | **Current (backend)**. Register in ElevenLabs UI. Secret is not in git. |
 | YFS Custom LLM / Gemini | Experimental/fallback business brain (text) behind Custom LLM. | **Experimental / fallback**. Existing routing unchanged. Not deleted. |
 | ElevenLabs Speech Engine | Experimental / legacy low-level realtime path. | Not production routing. Code kept, not activated. |
 | Voice Orchestrator / YFS Core / Bitrix tools | Laravel tool layer. | Next: first real read-only YFS Core tool. Bitrix not connected. |
-| Post-call audio / transcript / analysis | Persist `voice_*`, archive audio, Telegram. | **Planned**. Not implemented. |
+| Post-call audio / transcript / analysis | Persist `voice_*`, archive audio, Telegram. | Transcript + vendor summary + language memory **Current**. Audio URL is not in the transcription webhook. AI analysis / Telegram / downloader **Planned**. |
 | OpenAI Realtime / Gemini Live | Full realtime voice APIs. | **Rejected for Phase 2**. |
 
 ## Explicitly not used from Mousse Bakery

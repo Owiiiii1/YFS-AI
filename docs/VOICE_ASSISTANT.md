@@ -11,7 +11,7 @@ Realtime production path is confirmed by a successful inbound telephone call.
 
 **Experimental / fallback:** ElevenLabs voice layer + YFS Custom LLM gateway + Gemini. Existing Custom LLM routing is unchanged and is not deleted.
 
-Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center has admin-editable Voice Assistant bot settings. `POST /api/voice/context` is the diagnostic prompt JSON. `POST /api/voice/elevenlabs/conversation-initiation` is the ElevenLabs Conversation Initiation adapter. Customer / language / YFS Core / Bitrix context is not connected. This repo does not change ElevenLabs UI settings.
+Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center has admin-editable Voice Assistant bot settings and a Voice Assistant call journal. `POST /api/voice/context` is the diagnostic prompt JSON. `POST /api/voice/elevenlabs/conversation-initiation` is the ElevenLabs Conversation Initiation adapter (prompt override + optional language). `POST /api/voice/elevenlabs/post-call` persists completed conversations. Customer matching beyond phone / YFS Core / Bitrix is not connected. This repo does not change ElevenLabs UI settings.
 
 Related documents:
 
@@ -32,7 +32,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + Prompt Builder + initiation webhook adapter **Current** (paste URL into ElevenLabs; this repo does not change the agent). YFS Core / Bitrix / post-call / Calls admin **Planned**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + Prompt Builder + initiation webhook adapter + voice contacts/calls journal **Current**. YFS Core / Bitrix / AI post-call analysis **Planned**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
 **Selected Phase 2 (POC SUCCESS, see `docs/VOICE_ARCHITECTURE.md` § 13):**
@@ -53,7 +53,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 - first real read-only YFS Core Voice tool
 - Bitrix24 Voice tools (not connected yet)
 - production business tools
-- post-call `voice_calls` persistence, audio archive, transcript, analysis, Telegram
+- AI post-call analysis, audio archive, Telegram
 - live transfer / callback workflows in Laravel
 
 Voice Assistant and Sales Agent must not share one prompt or one agent configuration.
@@ -81,7 +81,7 @@ Voice Assistant must:
 13. Decide whether an operator action is required.
 14. Show the call and follow-up in the YFS AI admin.
 
-Realtime items 1–2 are **Current** at the voice-layer level. Native Agent webhook tool calling is **Current** for the smoke-test endpoint (POC SUCCESS). Item 5 next step is the first real read-only YFS Core tool. Items 6–14 are **Planned** unless noted in `docs/VOICE_ARCHITECTURE.md`.
+Realtime items 1–2 are **Current** at the voice-layer level. Native Agent webhook tool calling is **Current** for the smoke-test endpoint (POC SUCCESS). Item 5 next step is the first real read-only YFS Core tool. Item 11 is **Current** for transcript/summary persistence from the ElevenLabs post-call webhook. Items 6–10 and 12–14 remain **Planned** except the Call Center call journal.
 
 It is **not** an outbound sales caller. That is Phase 3.
 
@@ -117,13 +117,13 @@ Rules:
 
 Confirmed. Details: `docs/VOICE_ARCHITECTURE.md`.
 
-Not part of 2.1 (still **Planned** except the test-tool orchestrator in 2.3): Laravel Voice module persistence, post-call, admin.
+Not part of 2.1 (still **Planned** except the test-tool orchestrator in 2.3 and call persistence in 2.6): YFS Core tools, Bitrix, follow-ups.
 
-### Phase 2.2 — Laravel Voice Core — **Planned**
+### Phase 2.2 — Laravel Voice Core — **Current** for contacts/calls; matching **Planned**
 
-Create a **separate** Voice Assistant module. Conceptual entities only until migrations are explicitly started.
+`voice_contacts` and `voice_calls` exist. No YFS / Bitrix foreign keys yet.
 
-See [§5 Planned data](#5-planned-data-not-implemented).
+See [§5 Voice data](#5-voice-data).
 
 ### Phase 2.3 — Knowledge and tools — **Current** for test tool only; production tools **Planned**
 
@@ -139,83 +139,51 @@ See [§7 Prompt architecture](#7-prompt-architecture-planned). Conversation beha
 
 See [§9 Human handoff](#9-human-handoff-planned).
 
-### Phase 2.6 — Post-call processing — **Planned**
+### Phase 2.6 — Post-call processing — **Current** for persist + language memory; analysis **Planned**
 
-See [§10 Post-call processing](#10-post-call-processing-planned).
+See [§10 Post-call processing](#10-post-call-processing).
 
-### Phase 2.7 — Admin — **Planned**
+### Phase 2.7 — Admin — **Current** for the call journal; Follow-ups **Planned**
 
-See [§12 Admin](#12-admin-planned).
+See [§12 Admin](#12-admin).
 
 ---
 
-## 5. Planned data (NOT IMPLEMENTED)
+## 5. Voice data
 
-These tables are a **conceptual schema**. They are not migrations and are not a final column list.
+Do not mix Voice tables with `conversations` / `conversation_messages`.
 
-Do not mix them with `conversations` / `conversation_messages`.
+### `voice_contacts` — **Current**
 
-### `voice_calls`
+Independent interlocutor table. No YFS / Bitrix foreign keys yet.
 
-One inbound (later also reusable for outbound) call record.
+- `phone_normalized` unique
+- `phone_display`
+- `name`
+- `preferred_language` (en/ru/uk when known)
+- `first_called_at` / `last_called_at`
+- `calls_count` (completed unique calls only)
+- `metadata` JSON (no secrets)
 
-Conceptual fields:
+### `voice_calls` — **Current**
 
-- `provider` — production realtime voice layer is ElevenLabs; LLM provider is separate (`gemini` today)
-- `provider_call_id` — external ID for idempotency and diagnostics
-- `direction` — Phase 2: inbound. Phase 3 may reuse the same store with outbound
-- caller
-- identified customer
-- timestamps / duration / status
-- language
-- transcript
-- audio reference / storage
-- summary
-- structured result
-- intent / topic
-- unresolved questions
-- follow-up / callback / escalation
-- Telegram notification metadata
-- outcome
-- needs_followup
+One completed ElevenLabs conversation.
 
-### `voice_call_messages`
+- `voice_contact_id`
+- `elevenlabs_conversation_id` unique
+- `twilio_call_sid`
+- `phone`
+- `language`
+- `started_at` / `ended_at` / `duration_seconds`
+- `status`
+- `transcript` JSON (normalized turns)
+- `summary` (ElevenLabs `analysis.transcript_summary` when present)
+- `recording_url` nullable (not provided by the transcription webhook)
+- `metadata` JSON (safe subset only)
 
-Turn-level transcript, not Instagram messages.
+### Still planned
 
-- `voice_call_id`
-- `speaker` — caller / agent / operator / system
-- `text`
-- timestamp / order
-- provider metadata if needed
-
-### `voice_contacts`
-
-Normalized contact data collected during calls (name, phone, email, child/participant details, preferred callback, etc.).
-
-May later link to `customers` without replacing Instagram customer rows.
-
-### `voice_followups`
-
-Operator work queue after a call.
-
-- reason
-- priority
-- status
-- assigned operator
-- callback requested
-- operator notes
-
-### `voice_agent_settings`
-
-Non-secret runtime configuration.
-
-- remote agent IDs
-- transfer configuration
-- behaviour settings (hours, fallback, languages)
-- analysis model choice
-
-Secrets are **not** stored as plaintext in this table and are not documented here.
+`voice_followups`, `voice_agent_settings`, `voice_call_messages` as a separate table (turns currently live on `voice_calls.transcript`), YFS/Bitrix FKs on `voice_contacts`.
 
 ---
 
@@ -347,42 +315,24 @@ Follow-up must support:
 
 ---
 
-## 10. Post-call processing (Planned)
+## 10. Post-call processing
 
-**Not implemented.**
+**Current** for HMAC ingest, idempotent persist, language memory. Audio archive, queued AI analysis, and Telegram remain **Planned**.
 
 ElevenLabs remains the owner/source of telephone conversation audio.
 
-Planned Laravel path after the call:
+Current Laravel path after the call:
 
-1. Verify webhook authenticity / signature (and/or retrieve audio + transcript from ElevenLabs).
-2. Enforce idempotency (`provider` + `provider_call_id` / provider event ID).
-3. Store call metadata on `voice_calls`.
-4. Store the transcript.
-5. Store audio reference / archive through YFS AI.
-6. Store provider analysis if the vendor sent one.
-7. Queue structured analysis (not inside the webhook request).
-8. Telegram notification when configured.
+1. Verify `ElevenLabs-Signature` HMAC (`t=` + `v0=`, 30-minute tolerance) on `POST /api/voice/elevenlabs/post-call`.
+2. Ignore non-`post_call_transcription` events (including `post_call_audio`) with HTTP 200.
+3. Idempotent upsert on `elevenlabs_conversation_id`.
+4. Store call metadata, transcript turns, and vendor summary when present.
+5. If `metadata.main_language` is en/ru/uk, update `voice_calls.language` and `voice_contacts.preferred_language`.
+6. Increment `calls_count` once per unique conversation.
 
-Structured result (logical contract, not a final schema):
+`recording_url` is stored only if the payload actually contains an `http(s)` URL. The documented transcription webhook does not. This repo does not download audio.
 
-- `summary`
-- `intent` / topic
-- `customer_name`
-- `contact_details`
-- `questions`
-- `resolved_questions`
-- `unresolved_questions`
-- `sentiment`
-- `lead_quality`
-- `sales_opportunity`
-- `needs_operator`
-- `callback_required`
-- `urgency`
-- `recommended_action`
-- `outcome`
-
-The analysis model is a later Laravel choice. It is not the Custom LLM realtime path.
+Planned later: audio archive, queued structured analysis, Telegram.
 
 ---
 
@@ -427,7 +377,7 @@ Call center today:
 
 ```text
 Call center
-├── Voice assistant     placeholder (unchanged)
+├── Voice assistant     call journal (click a row for contact + transcript)
 └── Bot settings        editable Voice Assistant behaviour
 ```
 
@@ -444,19 +394,18 @@ VoiceAssistantPromptBuilder
   ↓
 authenticated POST /api/voice/elevenlabs/conversation-initiation
   ↓
-ElevenLabs conversation_initiation_client_data (system prompt override)
+ElevenLabs conversation_initiation_client_data (system prompt override + optional language)
 ```
 
 Diagnostic JSON remains `POST /api/voice/context`.
 
-Paste into ElevenLabs: `https://ai.youngfashionshow.com/api/voice/elevenlabs/conversation-initiation` with header `Authorization: Bearer <token>`. This repo does not change ElevenLabs settings. Customer / language / YFS Core / Bitrix context is not connected.
+Paste into ElevenLabs: `https://ai.youngfashionshow.com/api/voice/elevenlabs/conversation-initiation` with header `Authorization: Bearer <token>`. Post-call: `https://ai.youngfashionshow.com/api/voice/elevenlabs/post-call` with HMAC `ElevenLabs-Signature`. This repo does not change ElevenLabs settings. YFS Core / Bitrix matching is not connected.
 
 Still **Planned** (not built):
 
 ```text
 Voice Assistant
 ├── Dashboard
-├── Calls
 ├── Follow-ups
 ├── Agent Settings
 └── Integrations
@@ -464,21 +413,18 @@ Voice Assistant
 
 ### Calls
 
-Operator sees:
+**Current** on Call Center → Voice Assistant:
 
-- caller
-- identified customer
 - date / time
-- duration
+- caller name or Unknown
+- phone
 - language
+- duration
 - status
-- AI summary
-- transcript
-- audio reference
-- extracted contact data
-- resolved / unresolved questions
-- outcome
-- whether operator action is required
+- brief (ElevenLabs summary, else transcript preview)
+- contact card + dialogue transcript in a sheet
+
+Not shown yet (no fake data): YFS participant/customer, package, show, Bitrix contact.
 
 ### Follow-ups
 
@@ -504,19 +450,11 @@ Connection status for Twilio (informational), ElevenLabs, and the LLM provider. 
 
 ---
 
-## 13. Webhook security (Planned)
+## 13. Webhook security
 
-Required for every provider webhook and tool endpoint:
+Initiation: Bearer `ELEVENLABS_TOOL_TOKEN` (unchanged).
 
-- signature (or equivalent) verification
-- replay / idempotency protection
-- no secrets in logs
-- persist provider event ID when the vendor sends one
-- raw payload storage only if required and stored safely
-- async processing for anything heavier than ack + persist
-- retry-safe handlers (duplicate delivery must not duplicate follow-ups or analysis side effects)
-
-Same idea as Meta / Telegram webhooks: verify first, then normalize, then process.
+Post-call: HMAC `ElevenLabs-Signature` with a separate `ELEVENLABS_POST_CALL_WEBHOOK_SECRET`. Fail closed if the secret is empty. Duplicate `conversation_id` deliveries update the same row and do not increment `calls_count` again. Secrets are not logged, stored in metadata, or shown in the UI.
 
 ---
 
@@ -588,7 +526,7 @@ OpenAI Realtime as an alternative full voice runtime is **not selected for Phase
 | Domain | Tables / module | Transport |
 | --- | --- | --- |
 | Instagram / Facebook | `conversations`, `conversation_messages` | Meta messaging |
-| Voice Assistant | `voice_*` (**Planned**) | Inbound phone |
+| Voice Assistant | `voice_contacts`, `voice_calls`, `voice_assistant_settings` | Inbound phone |
 | Sales Agent | TBD in Phase 3; may reuse `voice_calls.direction = outbound` | Outbound phone |
 
 Do not unify Instagram messages and voice turns in one physical table “for simplicity”.
@@ -610,7 +548,7 @@ Still out of scope until explicitly started:
 
 - YFS Core / Bitrix Voice tools
 - production business tools beyond the test tool
-- post-call migrations and jobs
+- AI post-call analysis / Telegram / audio downloader
 - changing Instagram / Facebook / Telegram product behaviour
 - Phase 3 Sales Agent
 - writing credentials into docs

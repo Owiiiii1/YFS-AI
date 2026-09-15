@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\FacebookSettingsController;
 use App\Http\Controllers\Admin\InstagramSettingsController;
 use App\Http\Controllers\CallCenter\VoiceBotSettingsController;
+use App\Http\Controllers\CallCenter\VoiceCallsController;
 use App\Http\Controllers\AiPromptAnalysisController;
 use App\Http\Controllers\BotManagementController;
 use App\Http\Controllers\DialogsController;
@@ -27,7 +28,7 @@ use OwlSolutions\CustomAdminKit\Support\AdminRouteMiddleware;
 
 Route::middleware(AdminRouteMiddleware::stack())->group(function () {
     Route::get('/dashboard', static fn () => Inertia::render('Dashboard'))->name('dashboard');
-    Route::get('/call-center', static fn () => Inertia::render('CallCenter/Index'))->name('call-center.index');
+    Route::get('/call-center', [VoiceCallsController::class, 'index'])->name('call-center.index');
     Route::get('/call-center/bot-settings', [VoiceBotSettingsController::class, 'index'])->name('call-center.bot-settings');
     Route::patch('/call-center/bot-settings/{key}', [VoiceBotSettingsController::class, 'update'])->name('call-center.bot-settings.update');
 

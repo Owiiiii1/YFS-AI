@@ -17,7 +17,7 @@ Created empty for this project. Mousse Bakery production data was not imported.
 
 ## Tables
 
-`ai_prompt_analysis_messages`, `ai_prompt_analysis_sessions`, `ai_prompt_change_proposals`, `ai_provider_settings`, `ai_role_connections`, `ai_runs`, `bot_decision_traces`, `bot_prompt_revisions`, `bot_replies`, `bot_settings`, `cache`, `cache_locks`, `calendar_day_settings`, `calendar_settings`, `calendar_slots`, `conversation_messages`, `conversations`, `customers`, `facebook_page_accounts`, `failed_jobs`, `instagram_accounts`, `job_batches`, `jobs`, `meta_data_deletion_requests`, `meta_oauth_states`, `telegram_settings`, `migrations`, `order_allergies`, `order_occasions`, `order_staff`, `orders`, `password_reset_tokens`, `services`, `sessions`, `staff`, `users`, `voice_assistant_settings`
+`ai_prompt_analysis_messages`, `ai_prompt_analysis_sessions`, `ai_prompt_change_proposals`, `ai_provider_settings`, `ai_role_connections`, `ai_runs`, `bot_decision_traces`, `bot_prompt_revisions`, `bot_replies`, `bot_settings`, `cache`, `cache_locks`, `calendar_day_settings`, `calendar_settings`, `calendar_slots`, `conversation_messages`, `conversations`, `customers`, `facebook_page_accounts`, `failed_jobs`, `instagram_accounts`, `job_batches`, `jobs`, `meta_data_deletion_requests`, `meta_oauth_states`, `telegram_settings`, `migrations`, `order_allergies`, `order_occasions`, `order_staff`, `orders`, `password_reset_tokens`, `services`, `sessions`, `staff`, `users`, `voice_assistant_settings`, `voice_contacts`, `voice_calls`
 
 YFS AI also has a **read-only** MySQL connection `jfs` (`JFS_DB_*`) to the main project database. It is not a table in `yfs_ai`. No writes.
 
@@ -39,24 +39,29 @@ YFS AI also has a **read-only** MySQL connection `jfs` (`JFS_DB_*`) to the main 
 | `meta_data_deletion_requests` | Meta data-deletion callback receipts. Status is public via confirmation code only. |
 | `telegram_settings` | Telegram bot token (encrypted) and optional channel. Configured from Settings UI. |
 | `voice_assistant_settings` | Editable Voice Assistant behaviour sections (Call Center → Bot settings). Assembled into `POST /api/voice/context` and the ElevenLabs initiation adapter. |
+| `voice_contacts` | Independent voice interlocutors keyed by normalized phone. No YFS/Bitrix FKs yet. |
+| `voice_calls` | Completed ElevenLabs conversations: transcript, language, summary, Twilio SID. |
 | `orders` / `calendar_*` | Legacy cake/booking tables. Hidden from the live YFS UI. |
 | `ai_runs` / `bot_decision_traces` / `bot_prompt_revisions` | Bot telemetry / prompt history. Empty. |
 
-## Planned Voice Assistant entities (NOT IMPLEMENTED)
+## Voice Assistant entities
 
-Phase 2 architecture: `docs/VOICE_ARCHITECTURE.md`. Product/schema intent: `docs/VOICE_ASSISTANT.md`. Behaviour settings table `voice_assistant_settings` is implemented. Post-call tables below remain conceptual. **No `voice_calls` migrations exist.**
+Phase 2 architecture: `docs/VOICE_ARCHITECTURE.md`. Product/schema intent: `docs/VOICE_ASSISTANT.md`.
+
+**Current:** `voice_assistant_settings`, `voice_contacts`, `voice_calls`.
 
 Do not store voice turns in `conversations` / `conversation_messages`.
 
-| Planned table | Purpose |
-| --- | --- |
-| `voice_calls` | One call: provider, provider_call_id, direction, numbers, timestamps, duration, status, language, outcome, needs_followup, transcript/summary refs, metadata. |
-| `voice_call_messages` | Ordered transcript turns (speaker, text, time, optional provider metadata). |
-| `voice_contacts` | Normalized contact data collected on calls. May later link to `customers`. |
-| `voice_followups` | Operator queue: reason, priority, status, assignee, callback request, notes. |
-| `voice_agent_settings` | Non-secret runtime config: active provider, agent IDs, transfer, behaviour. Secrets stay out of this table and out of git. Distinct from `voice_assistant_settings` (policy text). |
+| Table | Status | Purpose |
+| --- | --- | --- |
+| `voice_contacts` | Current | Normalized phone, preferred language, call counts. Matching to YFS/Bitrix is later. |
+| `voice_calls` | Current | One ElevenLabs conversation: ids, timestamps, duration, status, language, transcript JSON, vendor summary, optional recording URL. |
+| `voice_followups` | Planned | Operator queue: reason, priority, status, assignee, callback request, notes. |
+| `voice_agent_settings` | Planned | Non-secret runtime config. Distinct from `voice_assistant_settings` (policy text). |
 
-This is not a final column list. Sales Agent (Phase 3) may reuse call storage with `direction = outbound`; it must not reuse Voice Assistant prompts.
+`voice_calls.recording_url` is nullable: the ElevenLabs `post_call_transcription` webhook does not document a recording URL. Do not invent one.
+
+Sales Agent (Phase 3) may reuse call storage with an outbound direction later; it must not reuse Voice Assistant prompts.
 
 ## Expected empty / clean state after first admin login
 

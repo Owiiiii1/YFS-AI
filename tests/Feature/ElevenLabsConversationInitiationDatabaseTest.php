@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\VoiceAssistantSetting;
+use App\Models\VoiceCall;
+use App\Models\VoiceContact;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -55,6 +57,84 @@ class ElevenLabsConversationInitiationDatabaseTest extends TestCase
         $this->assertStringContainsString('Use the app first.', $prompt);
         $this->assertStringContainsString('Customer Support Voice Assistant', $prompt);
         $this->assertArrayNotHasKey('llm', $payload['conversation_config_override']['agent']['prompt']);
+        $this->assertArrayNotHasKey('language', $payload['conversation_config_override']['agent']);
+    }
+
+    #[Test]
+    public function unknown_caller_creates_a_contact_without_language_override_or_calls_count(): void
+    {
+        VoiceAssistantSetting::query()->create([
+            'key' => 'general',
+            'title' => 'General rules',
+            'instructions' => 'Use the app first.',
+            'enabled' => true,
+            'sort_order' => 1,
+        ]);
+
+        $this->postJson('/api/voice/elevenlabs/conversation-initiation', [
+            'caller_id' => '+1 (555) 123-4567',
+        ], [
+            'Authorization' => 'Bearer test-elevenlabs-tool-token',
+        ])->assertOk()
+            ->assertJsonMissingPath('conversation_config_override.agent.language');
+
+        $this->postJson('/api/voice/elevenlabs/conversation-initiation', [
+            'caller_id' => '15551234567',
+        ], [
+            'Authorization' => 'Bearer test-elevenlabs-tool-token',
+        ])->assertOk();
+
+        $this->assertSame(1, VoiceContact::query()->count());
+        $contact = VoiceContact::query()->first();
+        $this->assertSame('+15551234567', $contact->phone_normalized);
+        $this->assertSame(0, $contact->calls_count);
+        $this->assertNull($contact->preferred_language);
+        $this->assertSame(0, VoiceCall::query()->count());
+    }
+
+    #[Test]
+    public function known_caller_with_russian_preferred_language_gets_language_override(): void
+    {
+        $this->assertLanguageOverride('ru', '+15551230001');
+    }
+
+    #[Test]
+    public function known_caller_with_ukrainian_preferred_language_gets_language_override(): void
+    {
+        $this->assertLanguageOverride('uk', '+15551230002');
+    }
+
+    #[Test]
+    public function unsupported_preferred_language_does_not_create_an_override(): void
+    {
+        VoiceAssistantSetting::query()->create([
+            'key' => 'general',
+            'title' => 'General rules',
+            'instructions' => 'Use the app first.',
+            'enabled' => true,
+            'sort_order' => 1,
+        ]);
+
+        VoiceContact::query()->create([
+            'phone_normalized' => '+15551230003',
+            'phone_display' => '+15551230003',
+            'preferred_language' => 'fr',
+            'calls_count' => 0,
+        ]);
+
+        $payload = $this->postJson('/api/voice/elevenlabs/conversation-initiation', [
+            'caller_id' => '+15551230003',
+        ], [
+            'Authorization' => 'Bearer test-elevenlabs-tool-token',
+        ])->assertOk()->json();
+
+        $this->assertSame(['type', 'conversation_config_override'], array_keys($payload));
+        $this->assertArrayHasKey('prompt', $payload['conversation_config_override']['agent']);
+        $this->assertArrayNotHasKey('language', $payload['conversation_config_override']['agent']);
+        $this->assertSame(
+            ['prompt' => ['prompt' => $payload['conversation_config_override']['agent']['prompt']['prompt']]],
+            ['prompt' => $payload['conversation_config_override']['agent']['prompt']],
+        );
     }
 
     #[Test]
@@ -141,5 +221,37 @@ class ElevenLabsConversationInitiationDatabaseTest extends TestCase
         $this->assertStringContainsString('Original policy.', $first);
         $this->assertStringContainsString('Edited policy.', $second);
         $this->assertStringNotContainsString('Original policy.', $second);
+    }
+
+    private function assertLanguageOverride(string $language, string $phone): void
+    {
+        VoiceAssistantSetting::query()->create([
+            'key' => 'general',
+            'title' => 'General rules',
+            'instructions' => 'Use the app first.',
+            'enabled' => true,
+            'sort_order' => 1,
+        ]);
+
+        VoiceContact::query()->create([
+            'phone_normalized' => $phone,
+            'phone_display' => $phone,
+            'preferred_language' => $language,
+            'calls_count' => 3,
+        ]);
+
+        $payload = $this->postJson('/api/voice/elevenlabs/conversation-initiation', [
+            'caller_id' => $phone,
+        ], [
+            'Authorization' => 'Bearer test-elevenlabs-tool-token',
+        ])->assertOk()->json();
+
+        $this->assertSame('conversation_initiation_client_data', $payload['type']);
+        $this->assertSame(['type', 'conversation_config_override'], array_keys($payload));
+        $this->assertSame($language, $payload['conversation_config_override']['agent']['language']);
+        $this->assertArrayHasKey('prompt', $payload['conversation_config_override']['agent']);
+        $this->assertSame(['prompt'], array_keys($payload['conversation_config_override']['agent']['prompt']));
+        $this->assertStringContainsString('Use the app first.', $payload['conversation_config_override']['agent']['prompt']['prompt']);
+        $this->assertSame(3, VoiceContact::query()->where('phone_normalized', $phone)->value('calls_count'));
     }
 }

@@ -105,14 +105,15 @@ class VoiceBotSettingsTest extends TestCase
     }
 
     #[Test]
-    public function voice_assistant_placeholder_page_is_unchanged(): void
+    public function voice_assistant_page_is_the_calls_journal(): void
     {
         $this->actingAs(User::factory()->create())
             ->get(route('call-center.index'))
             ->assertOk()
             ->assertInertia(fn (AssertableInertia $page) => $page
                 ->component('CallCenter/Index')
-                ->missing('sections')
+                ->has('calls')
+                ->where('selectedCall', null)
             );
 
         $this->assertSame(0, VoiceAssistantSetting::query()->count());

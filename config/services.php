@@ -70,6 +70,7 @@ return [
 
     'elevenlabs' => [
         'tool_token' => env('ELEVENLABS_TOOL_TOKEN'),
+        'post_call_webhook_secret' => env('ELEVENLABS_POST_CALL_WEBHOOK_SECRET'),
     ],
 
     'voice_runtime' => [

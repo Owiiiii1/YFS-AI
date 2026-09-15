@@ -40,7 +40,7 @@ YFS AI Laravel backend
 | Subsystem | Transport | Status |
 | --- | --- | --- |
 | Instagram / Facebook Assistant | Meta messaging | Implemented / connected. Do not change this product to add voice. |
-| Voice Assistant | Inbound telephony (Twilio → ElevenLabs Native Agent → Laravel webhook tools) | Phase 2 in progress. Native webhook POC **SUCCESS**. Custom LLM remains experimental/fallback. YFS Core / Bitrix / post-call **Planned**. Canonical: `docs/VOICE_ARCHITECTURE.md`. |
+| Voice Assistant | Inbound telephony (Twilio → ElevenLabs Native Agent → Laravel webhook tools) | Phase 2 in progress. Native webhook POC **SUCCESS**. Custom LLM remains experimental/fallback. Voice contacts/calls + language memory **Current**. YFS Core / Bitrix **Planned**. Canonical: `docs/VOICE_ARCHITECTURE.md`. |
 | Sales Agent | Outbound telephony | Planned. Not specified here. |
 
 Phase 2 selected architecture is ElevenLabs Native Agent plus Laravel webhook tools (POC SUCCESS). Node Custom LLM is experimental/fallback and is not deleted. OpenAI Realtime and Gemini Live are not the Voice path. Instagram messages and voice transcripts stay in separate modules.
@@ -53,11 +53,12 @@ Phase 2 selected architecture is ElevenLabs Native Agent plus Laravel webhook to
 | Instagram assistant | OAuth, webhooks, conversations, YFS prompt routing, JFS read-only facts, bot replies |
 | Bot management | Structured prompt editor, enable/disable, prompt analysis |
 | Voice Assistant bot settings | Call Center → Bot settings. Editable behaviour sections from the client Customer Support policy. Assembled by `VoiceAssistantPromptBuilder` for `POST /api/voice/context` and the ElevenLabs initiation adapter. |
+| Voice Assistant calls | Call Center → Voice Assistant. `voice_contacts` / `voice_calls` journal and transcript sheet. |
 | AI providers | Stored API keys and role connections (`bot_runtime`, `prompt_analysis`) |
 | Telegram bot | Bound channel in Settings. Closed Instagram cases are posted there |
 | CRM screens | Customers. Orders and calendar are hidden. |
 
-Laravel Voice Assistant post-call tables and Calls / Follow-ups admin routes do **not** exist yet. Call Center Bot settings (`voice_assistant_settings`) do exist.
+Laravel Voice Assistant post-call tables (`voice_contacts`, `voice_calls`) and the Call Center call journal **exist**. Follow-ups and YFS/Bitrix matching do not.
 
 A separate Node process lives at `/var/www/yfs-ai/voice-runtime` and listens on `127.0.0.1:3101`. It is the Custom LLM gateway for the ElevenLabs Voice Agent. It is not part of php-fpm or the Laravel cron/queue workers.
 
@@ -92,7 +93,9 @@ Smoke-test: `POST /api/voice/tools/test-context` (Bearer `ELEVENLABS_TOOL_TOKEN`
 
 Runtime prompt contract: `POST /api/voice/context` (same Bearer). Diagnostic JSON from Call Center Bot settings.
 
-ElevenLabs Conversation Initiation adapter: `POST /api/voice/elevenlabs/conversation-initiation` (same Bearer). Paste this URL into ElevenLabs. This repo does not change ElevenLabs settings.
+ElevenLabs Conversation Initiation adapter: `POST /api/voice/elevenlabs/conversation-initiation` (same Bearer). Optional `agent.language` for known contacts. Paste this URL into ElevenLabs. This repo does not change ElevenLabs settings.
+
+Post-call: HMAC `POST /api/voice/elevenlabs/post-call`. Persist transcript / language / summary. Recording URL is not in the transcription webhook.
 
 **Experimental / fallback** (existing Custom LLM production routing, unchanged):
 
@@ -112,7 +115,7 @@ Public namespace: `/voice-engine/` → `127.0.0.1:3101`.
 Incoming model label: `yfs-bot-runtime`. Actual provider/model come from Laravel `bot_runtime`.  
 Laravel `location /` is unchanged. Twilio routing is not owned by YFS.
 
-**Planned:** first real read-only YFS Core Voice tool, then Bitrix (not connected yet), post-call `voice_*` persistence. Not implemented.
+**Planned:** first real read-only YFS Core Voice tool, then Bitrix (not connected yet). Not implemented.
 
 Speech Engine WebSocket is experimental / legacy, not production routing.
 

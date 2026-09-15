@@ -127,16 +127,17 @@ nginx: `/voice-engine/` → that process (Laravel `location /` unchanged)
 - **Selected Phase 2 path (POC SUCCESS, smoke-test):** `POST /api/voice/tools/test-context` — dedicated Bearer `ELEVENLABS_TOOL_TOKEN`, independent of voice-runtime. Synthetic test JSON only. Not YFS Core / Bitrix.
 - Voice Assistant bot settings (Call Center → Bot settings): admin-editable sections in `voice_assistant_settings`, filled from `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`.
 - Native Agent runtime prompt contract: `POST /api/voice/context` — diagnostic JSON from `VoiceAssistantPromptBuilder`. Same Bearer `ELEVENLABS_TOOL_TOKEN`.
-- Native Agent Conversation Initiation adapter: `POST /api/voice/elevenlabs/conversation-initiation` — ElevenLabs `conversation_initiation_client_data` with system prompt override. Same Bearer. Not auto-registered in the ElevenLabs UI.
+- Native Agent Conversation Initiation adapter: `POST /api/voice/elevenlabs/conversation-initiation` — ElevenLabs `conversation_initiation_client_data` with system prompt override. Same Bearer. Known callers may also receive `agent.language` from `voice_contacts.preferred_language` (en/ru/uk). Not auto-registered in the ElevenLabs UI.
+- Voice contacts and completed calls: `voice_contacts` / `voice_calls`. Post-call webhook: HMAC `POST /api/voice/elevenlabs/post-call`. Call Center → Voice Assistant lists calls.
 
 **Planned:**
 
 - operator pastes the initiation webhook URL into ElevenLabs (this step does not change ElevenLabs via API)
-- customer / language / YFS Core / Bitrix lookup on the initiation webhook
+- operator registers the post-call webhook in ElevenLabs (one manual HMAC secret step; this repo does not change the agent via API)
+- YFS Core / Bitrix customer matching on `voice_contacts`
 - YFS Core / Bitrix24 Voice tools and real connectors
 - production business tools
-- persistence and post-call workflows
-- Telegram notifications for voice calls
+- audio download / archive, AI post-call analysis, Telegram notifications for voice calls
 
 ### Gemini — **Current** for text and live tool calling
 
@@ -240,37 +241,22 @@ Rules for that layer:
 
 ## 6. Post-call pipeline
 
-**Planned. Not implemented.**
+**Current** for transcript persistence, language memory, and the Call Center journal. Audio archive, AI analysis, Telegram, follow-ups, and YFS/Bitrix matching remain **Planned**.
 
-ElevenLabs remains the owner/source of telephone conversation audio. YFS does not currently persist call audio, transcripts, or summaries.
+ElevenLabs remains the owner/source of telephone conversation audio. The `post_call_transcription` webhook does not include a recording URL in the documented payload, so `voice_calls.recording_url` stays nullable. A separate `post_call_audio` event carries base64 audio; YFS acknowledges it and does not persist `full_audio`.
 
-Planned post-call path:
+Current post-call path:
 
-1. post-call webhook and/or audio retrieval from ElevenLabs
-2. persist a Voice bounded context (not Instagram inbox tables)
-3. archive audio through YFS AI
-4. transcript + structured analysis
-5. operator follow-up / Telegram notification
+1. ElevenLabs `post_call_transcription` → HMAC `POST /api/voice/elevenlabs/post-call`
+2. idempotent persist into `voice_contacts` / `voice_calls`
+3. if `metadata.main_language` is en/ru/uk, store it on the call and as `voice_contacts.preferred_language`
+4. Call Center → Voice Assistant shows the call journal
 
-Planned `voice_calls` (and related) facts — conceptual, no migrations:
-
-- caller
-- identified customer
-- timestamps / duration / status
-- language
-- transcript
-- audio reference / storage
-- summary
-- structured result
-- intent / topic
-- unresolved questions
-- follow-up
-- callback / escalation
-- Telegram notification
+Used ElevenLabs fields (when present): `type`, `event_timestamp`, `data.conversation_id`, `data.status`, `data.transcript[]` (`role`, `message`, `time_in_call_secs`), `data.metadata.start_time_unix_secs`, `data.metadata.call_duration_secs`, `data.metadata.termination_reason`, `data.metadata.main_language`, `data.metadata.phone_call` (`type`, `direction`, `external_number`, `agent_number`, `call_sid`), `data.analysis.transcript_summary`, `data.analysis.call_successful`, `data.agent_id`, `data.has_audio`. Optional `recording_url` / `audio_url` is stored only if it is an `http(s)` URL.
 
 Do **not** store voice calls in `conversations` / `conversation_messages`. Those tables are Instagram/Facebook only.
 
-Schema sketch: `docs/DATABASE.md` and `docs/VOICE_ASSISTANT.md` § Planned data.
+Schema: `docs/DATABASE.md`.
 
 ---
 
@@ -360,11 +346,11 @@ The following are **not** current:
 - Bitrix24 Voice tools / connectors (not connected yet)
 - production business tools beyond the Native Agent smoke-test webhook
 - full production cutover of every inbound number onto Native Agent (existing Custom LLM routing is unchanged fallback)
-- post-call persistence / analysis / Telegram for calls
-- Voice admin Calls / Follow-ups
-- customer / language / YFS Core / Bitrix lookup on the initiation webhook
-- ElevenLabs UI webhook URL (backend adapter exists; this repo does not change the agent settings)
-- `voice_calls` / other post-call `voice_*` tables (`voice_assistant_settings` exists)
+- post-call AI analysis / Telegram / audio archive for calls
+- Voice admin Follow-ups
+- YFS Core / Bitrix customer matching on the initiation webhook
+- ElevenLabs UI webhook URLs (backend adapters exist; this repo does not change the agent settings)
+- other planned `voice_*` tables (`voice_followups`, `voice_agent_settings`). `voice_assistant_settings`, `voice_contacts`, and `voice_calls` exist.
 
 ---
 
@@ -451,7 +437,7 @@ The assembled prompt starts with immutable runtime decision rules: A KNOWN POLIC
 
 **Current (backend adapter).** This repo does **not** change ElevenLabs agent settings. The operator pastes the URL and header into ElevenLabs.
 
-Official contract (ElevenLabs Personalization / Twilio personalization docs): the webhook **POST**s caller metadata and must return `conversation_initiation_client_data`. `type` is included as in the current ElevenLabs examples. Only the system prompt override is sent. Custom `dynamic_variables` are omitted until the agent declares them. Customer / language / YFS Core / Bitrix context is **not** connected.
+Official contract (ElevenLabs Personalization / Twilio personalization docs): the webhook **POST**s caller metadata and must return `conversation_initiation_client_data`. `type` is included as in the current ElevenLabs examples. System prompt override is always sent. `agent.language` is added only when `voice_contacts.preferred_language` is a supported en/ru/uk value. Custom `dynamic_variables` are omitted until the agent declares them. YFS Core / Bitrix matching is **not** connected.
 
 ```text
 Admin
@@ -460,11 +446,13 @@ voice_assistant_settings
   ↓
 VoiceAssistantPromptBuilder
   ↓
+caller_id → PhoneNumberNormalizer → voice_contacts
+  ↓
 authenticated POST /api/voice/elevenlabs/conversation-initiation
   ↓
 ElevenLabs conversation_initiation_client_data
   ↓
-Native Agent system prompt override
+Native Agent system prompt override (+ language when known)
 ```
 
 Production URL to paste into ElevenLabs:
@@ -492,14 +480,22 @@ Example response shape (prompt body omitted):
 }
 ```
 
-Incoming fields such as `caller_id`, `agent_id`, `called_number`, `call_sid`, and `conversation_id` are accepted and ignored.
+When a known contact has preferred_language en/ru/uk, `conversation_config_override.agent.language` is also returned. Unknown numbers omit `language` so ElevenLabs keeps its default detection.
 
-System Prompt for a new inbound call can now come from:
+Language override requires the ElevenLabs agent Security setting that allows conversation initiation overrides for language (previously enabled on this agent). First-message override is not sent.
+
+System Prompt for a new inbound call comes from:
 
 YFS Admin → `voice_assistant_settings` → VoiceAssistantPromptBuilder → initiation webhook → ElevenLabs.
+
+Post-call HMAC endpoint (separate secret from `ELEVENLABS_TOOL_TOKEN`):
+
+`https://ai.youngfashionshow.com/api/voice/elevenlabs/post-call`
+
+Event: `post_call_transcription`. Header: `ElevenLabs-Signature`. Secret value stays in ElevenLabs / `ELEVENLABS_POST_CALL_WEBHOOK_SECRET`; do not put the value in git or docs.
 
 Node Custom LLM (`POST /voice-engine/v1/chat/completions`) remains **experimental/fallback** and is not deleted. Existing Custom LLM production routing is unchanged.
 
 `POST /api/voice/tools/test-context` remains the smoke-test tool.
 
-Next: paste this webhook URL and Bearer header into ElevenLabs. Then customer/language lookup. Bitrix is not connected yet.
+YFS Core / Bitrix are not connected yet.
