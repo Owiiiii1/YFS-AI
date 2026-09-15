@@ -62,6 +62,7 @@ class HandleInertiaRequests extends Middleware
                 'elevenlabs_status' => fn () => $request->session()->get('elevenlabs_status'),
                 'facebook_status' => fn () => $request->session()->get('facebook_status'),
                 'bot_status' => fn () => $request->session()->get('bot_status'),
+                'voice_bot_status' => fn () => $request->session()->get('voice_bot_status'),
                 'order_slot_status' => fn () => $request->session()->get('order_slot_status'),
             ],
 

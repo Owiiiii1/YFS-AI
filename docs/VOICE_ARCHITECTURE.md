@@ -3,6 +3,7 @@
 Canonical source for YFS Voice AI Consultant architecture.
 
 Product goals, roadmap, planned schema, and admin intent: `docs/VOICE_ASSISTANT.md`.  
+Client Customer Support policy (verbatim source of truth for Voice Assistant behaviour settings): `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`.  
 Vendor URLs and credentials locations: `docs/EXTERNAL_SERVICES.md`.  
 Subsystem map: `docs/ARCHITECTURE.md`.
 
@@ -124,9 +125,11 @@ nginx: `/voice-engine/` → that process (Laravel `location /` unchanged)
 - filler phrase registry
 - internal turn: `POST /api/internal/voice/session/turn`
 - **Selected Phase 2 path (POC SUCCESS, smoke-test):** `POST /api/voice/tools/test-context` — dedicated Bearer `ELEVENLABS_TOOL_TOKEN`, independent of voice-runtime. Synthetic test JSON only. Not YFS Core / Bitrix.
+- Voice Assistant bot settings (Call Center → Bot settings): admin-editable sections in `voice_assistant_settings`, filled from `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`. **Not** sent to ElevenLabs yet.
 
 **Planned:**
 
+- runtime Prompt Builder: admin settings → Laravel → ElevenLabs conversation context
 - YFS Core / Bitrix24 Voice tools and real connectors
 - production business tools
 - persistence and post-call workflows
@@ -355,8 +358,8 @@ The following are **not** current:
 - production business tools beyond the Native Agent smoke-test webhook
 - full production cutover of every inbound number onto Native Agent (existing Custom LLM routing is unchanged fallback)
 - post-call persistence / analysis / Telegram for calls
-- Voice admin (Calls / Follow-ups) beyond a Call center placeholder
-- `voice_*` database tables
+- Voice admin Calls / Follow-ups (Call Center Bot settings exist; they are not runtime prompt injection)
+- `voice_calls` / other post-call `voice_*` tables (`voice_assistant_settings` exists)
 
 ---
 

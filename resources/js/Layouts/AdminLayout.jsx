@@ -12,6 +12,7 @@ import {
     MessageCircle,
     Phone,
     Settings,
+    SlidersHorizontal,
     UserCircle2,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -25,6 +26,7 @@ const instagramNavItems = [
 
 const callCenterNavItems = [
     { route: 'call-center.index', icon: Phone, key: 'callCenterHome' },
+    { route: 'call-center.bot-settings', icon: SlidersHorizontal, key: 'callCenterBotSettings' },
 ];
 
 const bottomNavItems = [
@@ -95,6 +97,7 @@ export default function AdminLayout({ title, children }) {
             botManagement: 'Bot management',
             callCenter: 'Call center',
             callCenterHome: 'Voice assistant',
+            callCenterBotSettings: 'Bot settings',
             settings: 'Settings',
             statistics: 'Reports',
             logs: 'Logs',
@@ -111,6 +114,7 @@ export default function AdminLayout({ title, children }) {
             botManagement: 'Управление ботом',
             callCenter: 'Колл-центр',
             callCenterHome: 'Голосовой ассистент',
+            callCenterBotSettings: 'Настройки бота',
             settings: 'Настройки',
             statistics: 'Отчёты',
             logs: 'Логи',
@@ -127,6 +131,7 @@ export default function AdminLayout({ title, children }) {
             botManagement: 'Керування ботом',
             callCenter: 'Кол-центр',
             callCenterHome: 'Голосовий асистент',
+            callCenterBotSettings: 'Налаштування бота',
             settings: 'Налаштування',
             statistics: 'Звіти',
             logs: 'Логи',
@@ -146,7 +151,7 @@ export default function AdminLayout({ title, children }) {
         }`;
 
     const isNavActive = (routeName) => {
-        if (routeName === 'dialogs.instagram') {
+        if (routeName === 'dialogs.instagram' || routeName.startsWith('call-center.')) {
             return route().current(routeName);
         }
 

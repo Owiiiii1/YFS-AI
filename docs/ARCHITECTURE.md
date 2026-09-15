@@ -52,11 +52,12 @@ Phase 2 selected architecture is ElevenLabs Native Agent plus Laravel webhook to
 | Auth / admin shell | custom-admin-kit login, dashboard, users, settings |
 | Instagram assistant | OAuth, webhooks, conversations, YFS prompt routing, JFS read-only facts, bot replies |
 | Bot management | Structured prompt editor, enable/disable, prompt analysis |
+| Voice Assistant bot settings | Call Center → Bot settings. Editable behaviour sections from the client Customer Support policy. Not wired to ElevenLabs yet. |
 | AI providers | Stored API keys and role connections (`bot_runtime`, `prompt_analysis`) |
 | Telegram bot | Bound channel in Settings. Closed Instagram cases are posted there |
 | CRM screens | Customers. Orders and calendar are hidden. |
 
-Laravel Voice Assistant tables and admin routes do **not** exist yet.
+Laravel Voice Assistant post-call tables and Calls / Follow-ups admin routes do **not** exist yet. Call Center Bot settings (`voice_assistant_settings`) do exist.
 
 A separate Node process lives at `/var/www/yfs-ai/voice-runtime` and listens on `127.0.0.1:3101`. It is the Custom LLM gateway for the ElevenLabs Voice Agent. It is not part of php-fpm or the Laravel cron/queue workers.
 

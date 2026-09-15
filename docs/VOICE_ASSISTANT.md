@@ -11,15 +11,16 @@ Realtime production path is confirmed by a successful inbound telephone call.
 
 **Experimental / fallback:** ElevenLabs voice layer + YFS Custom LLM gateway + Gemini. Existing Custom LLM routing is unchanged and is not deleted.
 
-Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). YFS Core / Bitrix tools, post-call pipeline, and Voice admin remain **Planned**.
+Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center now has admin-editable Voice Assistant bot settings based on the client Customer Support policy. Those settings are **not** wired into ElevenLabs yet. YFS Core / Bitrix tools, post-call pipeline, and Calls / Follow-ups remain **Planned**.
 
 Related documents:
 
 - `docs/VOICE_ARCHITECTURE.md` — canonical architecture (Current / Planned / rejected)
+- `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md` — verbatim client Customer Support instruction (source of truth for Voice Assistant behaviour settings)
 - `docs/PROJECT.md` — phase statuses
 - `docs/ARCHITECTURE.md` — high-level subsystem map
 - `docs/EXTERNAL_SERVICES.md` — vendor roles
-- `docs/DATABASE.md` — planned `voice_*` entities (not implemented)
+- `docs/DATABASE.md` — schema including `voice_assistant_settings`
 - `docs/SALES_AGENT.md` — Phase 3 outbound agent (not specified here)
 
 Do not record account IDs, API keys, tokens, passwords, or other secrets in this file.
@@ -31,7 +32,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. YFS Core / Bitrix / post-call / admin **Planned**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings **Current** (not sent to ElevenLabs yet). YFS Core / Bitrix / post-call / Calls admin **Planned**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
 **Selected Phase 2 (POC SUCCESS, see `docs/VOICE_ARCHITECTURE.md` § 13):**
@@ -420,9 +421,19 @@ Full transcript is available **below** the report, not instead of it.
 
 ---
 
-## 12. Admin (Planned)
+## 12. Admin
 
-Future admin section (not built; Call center page today is a placeholder):
+Call center today:
+
+```text
+Call center
+├── Voice assistant     placeholder (unchanged)
+└── Bot settings        editable Voice Assistant behaviour
+```
+
+Voice Assistant behaviour settings are stored in `voice_assistant_settings` and must be based on `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`. They are not pushed to ElevenLabs in this step. A later Prompt Builder will assemble admin settings → Laravel → ElevenLabs conversation context.
+
+Still **Planned** (not built):
 
 ```text
 Voice Assistant
