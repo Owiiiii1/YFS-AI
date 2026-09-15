@@ -40,7 +40,7 @@ YFS AI Laravel backend
 | Subsystem | Transport | Status |
 | --- | --- | --- |
 | Instagram / Facebook Assistant | Meta messaging | Implemented / connected. Do not change this product to add voice. |
-| Voice Assistant | Inbound telephony (Twilio → ElevenLabs Native Agent → Laravel webhook tools) | Phase 2 in progress. Native webhook POC **SUCCESS**. Custom LLM remains experimental/fallback. Voice contacts/calls + language memory **Current**. YFS Core / Bitrix **Planned**. Canonical: `docs/VOICE_ARCHITECTURE.md`. |
+| Voice Assistant | Inbound telephony (Twilio → ElevenLabs Native Agent → Laravel webhook tools) | Phase 2 in progress. Native webhook POC **SUCCESS**. Custom LLM remains experimental/fallback. Voice contacts/calls + language memory **Current**. Public show/brand YFS Core tools **Current**. Bitrix **Planned**. Canonical: `docs/VOICE_ARCHITECTURE.md`. |
 | Sales Agent | Outbound telephony | Planned. Not specified here. |
 
 Phase 2 selected architecture is ElevenLabs Native Agent plus Laravel webhook tools (POC SUCCESS). Node Custom LLM is experimental/fallback and is not deleted. OpenAI Realtime and Gemini Live are not the Voice path. Instagram messages and voice transcripts stay in separate modules.
@@ -115,7 +115,7 @@ Public namespace: `/voice-engine/` → `127.0.0.1:3101`.
 Incoming model label: `yfs-bot-runtime`. Actual provider/model come from Laravel `bot_runtime`.  
 Laravel `location /` is unchanged. Twilio routing is not owned by YFS.
 
-**Planned:** first real read-only YFS Core Voice tool, then Bitrix (not connected yet). Not implemented.
+**Current:** first real read-only YFS Core Voice tools (`get_public_shows`, `get_show_brands`) wrapping `JfsReadService`. Bitrix not connected.
 
 Speech Engine WebSocket is experimental / legacy, not production routing.
 

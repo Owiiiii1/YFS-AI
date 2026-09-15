@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\MetaInstagramDeauthorizeController;
 use App\Http\Controllers\Api\MetaInstagramWebhookController;
 use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\ElevenLabsTestContextController;
+use App\Http\Controllers\Api\ElevenLabsYfsLiveToolController;
 use App\Http\Controllers\Api\ElevenLabsConversationInitiationController;
 use App\Http\Controllers\Api\ElevenLabsPostCallWebhookController;
 use App\Http\Controllers\Api\VoiceContextController;
@@ -28,6 +29,12 @@ Route::post('/telegram/webhook', TelegramWebhookController::class)
 Route::post('/voice/tools/test-context', ElevenLabsTestContextController::class)
     ->middleware(AuthenticateElevenLabsTool::class)
     ->name('api.voice.tools.test-context');
+Route::post('/voice/tools/public-shows', [ElevenLabsYfsLiveToolController::class, 'publicShows'])
+    ->middleware(AuthenticateElevenLabsTool::class)
+    ->name('api.voice.tools.public-shows');
+Route::post('/voice/tools/show-brands', [ElevenLabsYfsLiveToolController::class, 'showBrands'])
+    ->middleware(AuthenticateElevenLabsTool::class)
+    ->name('api.voice.tools.show-brands');
 Route::post('/voice/context', VoiceContextController::class)
     ->middleware(AuthenticateElevenLabsTool::class)
     ->name('api.voice.context');

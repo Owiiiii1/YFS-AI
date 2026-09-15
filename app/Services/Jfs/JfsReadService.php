@@ -9,6 +9,8 @@ use Throwable;
 
 class JfsReadService
 {
+    private bool $lastReadFailed = false;
+
     public function isConfigured(): bool
     {
         return filled(config('database.connections.jfs.database'))
@@ -16,11 +18,25 @@ class JfsReadService
     }
 
     /**
+     * True when the last publicEvents / publicBrandLineups / findClientByEmail
+     * call could not read JFS (unconfigured or query exception). Empty result
+     * sets are not a failure.
+     */
+    public function lastReadFailed(): bool
+    {
+        return $this->lastReadFailed;
+    }
+
+    /**
      * @return list<array{name:string,city:string,location:string,starts_at:?string,ends_at:?string,date_announced:bool,is_past:bool,description:?string}>
      */
     public function publicEvents(): array
     {
+        $this->lastReadFailed = false;
+
         if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
             return [];
         }
 
@@ -39,6 +55,7 @@ class JfsReadService
                     'i.description_i18n',
                 ]);
         } catch (Throwable $exception) {
+            $this->lastReadFailed = true;
             Log::warning('JFS event read failed.', ['message' => $exception->getMessage()]);
 
             return [];
@@ -93,7 +110,11 @@ class JfsReadService
             return ['status' => 'invalid', 'client' => null, 'children' => []];
         }
 
+        $this->lastReadFailed = false;
+
         if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
             return ['status' => 'unavailable', 'client' => null, 'children' => []];
         }
 
@@ -103,6 +124,7 @@ class JfsReadService
                 ->whereRaw('LOWER(email) = ?', [$email])
                 ->get(['id', 'name', 'email', 'phone', 'role', 'status']);
         } catch (Throwable $exception) {
+            $this->lastReadFailed = true;
             Log::warning('JFS client lookup failed.', ['message' => $exception->getMessage()]);
 
             return ['status' => 'unavailable', 'client' => null, 'children' => []];
@@ -214,7 +236,11 @@ class JfsReadService
      */
     public function publicBrandLineups(): array
     {
+        $this->lastReadFailed = false;
+
         if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
             return [];
         }
 
@@ -233,6 +259,7 @@ class JfsReadService
                 ->orderBy('b.name')
                 ->get(['eb.event_id', 'b.name']);
         } catch (Throwable $exception) {
+            $this->lastReadFailed = true;
             Log::warning('JFS brand lineup read failed.', ['message' => $exception->getMessage()]);
 
             return [];

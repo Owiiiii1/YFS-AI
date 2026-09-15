@@ -210,19 +210,18 @@ TOOL PATH: if the fact is missing (latest YFS test status), Gemini may call `get
 
 Temporary forced “always call the test tool for the YFS test event” guardrail was removed. Preloaded SESSION context answers that question.
 
-Current tool:
+Current tools:
 
 | Tool | Status | Notes |
 | --- | --- | --- |
-| `get_current_yfs_test_context` | **Current**. Live call confirmed for tool execution. | Read-only synthetic test payload. Metadata: lookup / short / filler_enabled / read_only / source=yfs_ai_test. |
+| `get_current_yfs_test_context` | **Current**. Live call confirmed for tool execution. | Read-only synthetic test payload. Metadata: lookup / short / filler_enabled / read_only / source=yfs_ai_test. Native: `POST /api/voice/tools/test-context`. |
+| `get_public_shows` | **Current**. Laravel Native Agent webhook. | Read-only `JfsReadService::publicEvents()`. `POST /api/voice/tools/public-shows`. |
+| `get_show_brands` | **Current**. Laravel Native Agent webhook. | Read-only `JfsReadService::publicBrandLineups()`. `POST /api/voice/tools/show-brands`. Public lineup only. |
 
-Future tools/services (all **Planned**, not live on a production call):
+Future tools/services (still **Planned**, not live on a production call):
 
 - YFS Core customer lookup
 - YFS participation / history
-- past shows
-- future shows
-- show / event details
 - Bitrix24 contact / company
 - Bitrix deals
 - stages
@@ -234,8 +233,8 @@ Rules for that layer:
 - `voice-runtime` and the LLM never receive direct DB credentials or Bitrix credentials
 - access goes through Laravel services / tools
 - YFS Core and Bitrix24 are **read-only** for Voice Consultant until write actions are approved separately
-- YFS Core / Bitrix Voice integration does **not** exist yet
-- do not treat Instagram JFS read-only lookup as the Voice tool layer
+- public show/brand Voice tools reuse Instagram's `JfsReadService`; they do not copy Instagram prompt injection
+- Bitrix Voice integration does **not** exist yet
 
 ---
 
@@ -342,9 +341,9 @@ The previous “native LLM is not the business brain” decision is superseded. 
 
 The following are **not** current:
 
-- YFS Core Voice tools (next step: first real read-only YFS Core tool)
+- YFS Core participant / phone lookup Voice tools
 - Bitrix24 Voice tools / connectors (not connected yet)
-- production business tools beyond the Native Agent smoke-test webhook
+- production business tools beyond public shows, public brand lineups, and the Native Agent smoke-test webhook
 - full production cutover of every inbound number onto Native Agent (existing Custom LLM routing is unchanged fallback)
 - post-call AI analysis / Telegram / audio archive for calls
 - Voice admin Follow-ups
@@ -405,6 +404,13 @@ This endpoint:
 
 Missing or invalid Bearer → `401` JSON `{"message":"Unauthorized"}`. Empty configured token fails closed (401).
 
+Production read-only YFS Core tools (same auth, not the POC payload):
+
+- `POST /api/voice/tools/public-shows` — `get_public_shows`
+- `POST /api/voice/tools/show-brands` — `get_show_brands`
+
+They wrap `JfsReadService` and return `source: yfs_core` JSON. ElevenLabs UI fields: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
+
 ## 14. Native Agent conversation context contract
 
 **Current (diagnostic / runtime JSON).** Unchanged. Not the ElevenLabs webhook body.
@@ -428,12 +434,12 @@ JSON:
 ```json
 {
   "prompt": "...assembled prompt...",
-  "version": "v2-<sha256>",
+  "version": "v3-<sha256>",
   "generated_at": "<ISO-8601 UTC>"
 }
 ```
 
-The assembled prompt starts with immutable runtime decision rules: A KNOWN POLICY FACT (answer from policy, no callback/contacts), B MISSING DYNAMIC FACT (no automatic escalation), C HUMAN REQUIRED (escalate/contacts only then). Policy section bodies are not rewritten. `version` includes wrapper version `v2`.
+The assembled prompt starts with immutable runtime decision rules: A KNOWN POLICY FACT, B MISSING DYNAMIC FACT, C HUMAN REQUIRED, D LIVE SHOW TOOLS (`get_public_shows` / `get_show_brands`). Policy section bodies are not rewritten. `version` includes wrapper version `v3`.
 
 **Current (backend adapter).** This repo does **not** change ElevenLabs agent settings. The operator pastes the URL and header into ElevenLabs.
 

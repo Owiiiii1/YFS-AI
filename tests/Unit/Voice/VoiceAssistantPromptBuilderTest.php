@@ -83,8 +83,8 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertSame($first->prompt, $second->prompt);
         $this->assertNotSame($first->generatedAt, $second->generatedAt);
         $this->assertNotSame($first->version, $changed->version);
-        $this->assertStringStartsWith('v2-', $first->version);
-        $this->assertMatchesRegularExpression('/^v2-[a-f0-9]{64}$/', $first->version);
+        $this->assertStringStartsWith('v3-', $first->version);
+        $this->assertMatchesRegularExpression('/^v3-[a-f0-9]{64}$/', $first->version);
     }
 
     #[Test]
@@ -108,8 +108,12 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertStringContainsString('C. HUMAN REQUIRED', $prompt);
         $this->assertStringContainsString('collect contact details only when', $prompt);
         $this->assertStringContainsString('Do not invent dynamic facts', $prompt);
+        $this->assertStringContainsString('D. LIVE SHOW TOOLS', $prompt);
+        $this->assertStringContainsString('get_public_shows', $prompt);
+        $this->assertStringContainsString('get_show_brands', $prompt);
+        $this->assertStringContainsString('Tool results override static policy for live show facts', $prompt);
         $this->assertStringContainsString('Exact client wording.', $prompt);
-        $this->assertStringStartsWith('v2-', $assembled->version);
+        $this->assertStringStartsWith('v3-', $assembled->version);
     }
 
     #[Test]
@@ -118,7 +122,9 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $builder = new VoiceAssistantPromptBuilder;
         $assembled = $builder->assemble([]);
 
-        $this->assertMatchesRegularExpression('/^v2-[a-f0-9]{64}$/', $assembled->version);
+        $this->assertMatchesRegularExpression('/^v3-[a-f0-9]{64}$/', $assembled->version);
         $this->assertStringContainsString('KNOWN POLICY FACT', $assembled->prompt);
+        $this->assertStringContainsString('get_public_shows', $assembled->prompt);
+        $this->assertStringContainsString('get_show_brands', $assembled->prompt);
     }
 }

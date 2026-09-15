@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Services\Voice\Tools\GetPublicShowsVoiceTool;
+use App\Services\Voice\Tools\GetShowBrandsVoiceTool;
 use App\Services\Voice\Tools\TestVoiceTool;
 use App\Services\Voice\Tools\VoiceToolRegistry;
 use Illuminate\Support\ServiceProvider;
@@ -13,9 +15,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        $this->app->singleton(VoiceToolRegistry::class, function () {
+        $this->app->singleton(VoiceToolRegistry::class, function ($app) {
             return new VoiceToolRegistry([
-                new TestVoiceTool(),
+                $app->make(TestVoiceTool::class),
+                $app->make(GetPublicShowsVoiceTool::class),
+                $app->make(GetShowBrandsVoiceTool::class),
             ]);
         });
     }

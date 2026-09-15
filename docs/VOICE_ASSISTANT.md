@@ -17,6 +17,7 @@ Related documents:
 
 - `docs/VOICE_ARCHITECTURE.md` — canonical architecture (Current / Planned / rejected)
 - `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md` — verbatim client Customer Support instruction (source of truth for Voice Assistant behaviour settings)
+- `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` — ElevenLabs UI fields for `get_public_shows` and `get_show_brands`
 - `docs/PROJECT.md` — phase statuses
 - `docs/ARCHITECTURE.md` — high-level subsystem map
 - `docs/EXTERNAL_SERVICES.md` — vendor roles
@@ -32,15 +33,15 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + Prompt Builder + initiation webhook adapter + voice contacts/calls journal **Current**. YFS Core / Bitrix / AI post-call analysis **Planned**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + Prompt Builder + initiation webhook adapter + voice contacts/calls journal **Current**. Read-only public show/brand YFS Core tools **Current**. Bitrix / AI post-call analysis **Planned**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
 **Selected Phase 2 (POC SUCCESS, see `docs/VOICE_ARCHITECTURE.md` § 13):**
 
 - Twilio phone transport into ElevenLabs (not first-party YFS Twilio)
 - ElevenLabs Native Agent: STT, turn-taking, interruptions, language/voices, TTS, hosted LLM, conversation + audio ownership
-- Authenticated Laravel webhook tools: `POST /api/voice/tools/test-context` (smoke-test; synthetic JSON)
-- Confirmed via ElevenLabs Test Tool and a real voice conversation
+- Authenticated Laravel webhook tools: `POST /api/voice/tools/test-context` (POC smoke-test; synthetic JSON) plus production read-only YFS Core tools `POST /api/voice/tools/public-shows` and `POST /api/voice/tools/show-brands`
+- Confirmed via ElevenLabs Test Tool and a real voice conversation (POC). Live YFS Core tools are implemented in Laravel; register them in the ElevenLabs UI using `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
 
 **Experimental / fallback (existing Custom LLM routing, unchanged):**
 
@@ -48,9 +49,14 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 - Laravel `bot_runtime`: **gemini** / **gemini-3.8-flash**
 - Incoming ElevenLabs model label: `yfs-bot-runtime`
 
+**Current (read-only YFS Core Voice tools):**
+
+- `get_public_shows` → `POST /api/voice/tools/public-shows`
+- `get_show_brands` → `POST /api/voice/tools/show-brands`
+- Both wrap existing `JfsReadService`. Setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
+
 **Planned (not implemented):**
 
-- first real read-only YFS Core Voice tool
 - Bitrix24 Voice tools (not connected yet)
 - production business tools
 - AI post-call analysis, audio archive, Telegram
@@ -81,7 +87,7 @@ Voice Assistant must:
 13. Decide whether an operator action is required.
 14. Show the call and follow-up in the YFS AI admin.
 
-Realtime items 1–2 are **Current** at the voice-layer level. Native Agent webhook tool calling is **Current** for the smoke-test endpoint (POC SUCCESS). Item 5 next step is the first real read-only YFS Core tool. Item 11 is **Current** for transcript/summary persistence from the ElevenLabs post-call webhook. Items 6–10 and 12–14 remain **Planned** except the Call Center call journal.
+Realtime items 1–2 are **Current** at the voice-layer level. Native Agent webhook tool calling is **Current** for the smoke-test endpoint and for read-only public show/brand YFS Core tools. Item 11 is **Current** for transcript/summary persistence from the ElevenLabs post-call webhook. Items 6–10 and 12–14 remain **Planned** except the Call Center call journal.
 
 It is **not** an outbound sales caller. That is Phase 3.
 
@@ -125,9 +131,9 @@ Not part of 2.1 (still **Planned** except the test-tool orchestrator in 2.3 and 
 
 See [§5 Voice data](#5-voice-data).
 
-### Phase 2.3 — Knowledge and tools — **Current** for test tool only; production tools **Planned**
+### Phase 2.3 — Knowledge and tools — **Current** for test tool + public show/brand YFS Core tools; other production tools **Planned**
 
-Laravel Voice Orchestrator executes `get_current_yfs_test_context` server-side. YFS Core / Bitrix / production business tools are not connected. Live telephone tool calling is **Unverified**.
+Laravel Voice Orchestrator still executes `get_current_yfs_test_context` for the Custom LLM fallback. Native Agent production tools `get_public_shows` and `get_show_brands` wrap `JfsReadService` (read-only). Bitrix and participant lookup are not connected.
 
 See [§6 Knowledge and tools](#6-knowledge-and-tools-planned).
 
@@ -187,21 +193,25 @@ One completed ElevenLabs conversation.
 
 ---
 
-## 6. Knowledge and tools (Planned production tools; test tool Current)
+## 6. Knowledge and tools (public show/brand tools Current; other production tools Planned)
 
-Production YFS Core / Bitrix Voice tools are **not implemented**. Do not treat test-tool results as live business data.
+Do not treat the POC test-tool results as live business data.
 
-**Current (test only):** `get_current_yfs_test_context` via `POST /api/internal/voice/tools/execute`. Returns synthetic `source: yfs_ai_test` payload. Live inbound-call proof is **Unverified**.
+**Current (test only):** `get_current_yfs_test_context` via `POST /api/internal/voice/tools/execute` and `POST /api/voice/tools/test-context`. Returns synthetic `source: yfs_ai_test` payload.
 
-When production tools are built, the Voice Agent must call a Laravel tool instead of guessing when information is dynamic or needs confirmation.
+**Current (read-only YFS Core, Native Agent):**
+
+- `get_public_shows` — `POST /api/voice/tools/public-shows` — `JfsReadService::publicEvents()`
+- `get_show_brands` — `POST /api/voice/tools/show-brands` — `JfsReadService::publicBrandLineups()`
+
+ElevenLabs setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
+
+The Voice Agent must call a Laravel tool instead of guessing when information is dynamic or needs confirmation.
 
 Planned tool/service areas:
 
 - YFS Core customer lookup
 - YFS participation / history
-- past shows
-- future shows
-- show / event details
 - Bitrix24 contact / company
 - Bitrix deals
 - stages

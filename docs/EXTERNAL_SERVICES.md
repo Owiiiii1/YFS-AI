@@ -129,7 +129,7 @@ Details: `docs/VOICE_ARCHITECTURE.md`. Do not write account IDs, tokens, or API 
 | Native Agent post-call webhook | HMAC `POST /api/voice/elevenlabs/post-call`. Persists `voice_calls` / updates `voice_contacts.preferred_language`. | **Current (backend)**. Register in ElevenLabs UI. Secret is not in git. |
 | YFS Custom LLM / Gemini | Experimental/fallback business brain (text) behind Custom LLM. | **Experimental / fallback**. Existing routing unchanged. Not deleted. |
 | ElevenLabs Speech Engine | Experimental / legacy low-level realtime path. | Not production routing. Code kept, not activated. |
-| Voice Orchestrator / YFS Core / Bitrix tools | Laravel tool layer. | Next: first real read-only YFS Core tool. Bitrix not connected. |
+| Voice Orchestrator / YFS Core / Bitrix tools | Laravel tool layer. | YFS Core public show/brand tools Current. Bitrix not connected. |
 | Post-call audio / transcript / analysis | Persist `voice_*`, archive audio, Telegram. | Transcript + vendor summary + language memory **Current**. Audio URL is not in the transcription webhook. AI analysis / Telegram / downloader **Planned**. |
 | OpenAI Realtime / Gemini Live | Full realtime voice APIs. | **Rejected for Phase 2**. |
 

@@ -56,6 +56,8 @@ class ElevenLabsConversationInitiationDatabaseTest extends TestCase
         $prompt = $payload['conversation_config_override']['agent']['prompt']['prompt'];
         $this->assertStringContainsString('Use the app first.', $prompt);
         $this->assertStringContainsString('Customer Support Voice Assistant', $prompt);
+        $this->assertStringContainsString('get_public_shows', $prompt);
+        $this->assertStringContainsString('get_show_brands', $prompt);
         $this->assertArrayNotHasKey('llm', $payload['conversation_config_override']['agent']['prompt']);
         $this->assertArrayNotHasKey('language', $payload['conversation_config_override']['agent']);
     }

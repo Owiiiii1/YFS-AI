@@ -25,6 +25,8 @@ class ConversationInitiationClientDataTest extends TestCase
 
         $this->assertSame('conversation_initiation_client_data', $payload['type']);
         $this->assertSame($assembled->prompt, $payload['conversation_config_override']['agent']['prompt']['prompt']);
+        $this->assertStringContainsString('get_public_shows', $assembled->prompt);
+        $this->assertStringContainsString('get_show_brands', $assembled->prompt);
         $this->assertSame(['type', 'conversation_config_override'], array_keys($payload));
         $this->assertArrayNotHasKey('dynamic_variables', $payload);
         $this->assertArrayNotHasKey('llm', $payload['conversation_config_override']['agent']['prompt']);
