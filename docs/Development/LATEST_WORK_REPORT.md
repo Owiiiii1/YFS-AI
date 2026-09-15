@@ -10,7 +10,9 @@ Documentation only. Production code, schema, config, tools, and ElevenLabs setti
 
 ## Commit
 
-Recorded after `git commit`.
+`544a4c5a8d9e57a2fcb60f1e74e022dd0e0371e2` on `main`
+
+Document Voice customer identity and Bitrix audit.
 
 ## Repositories examined (read-only)
 
