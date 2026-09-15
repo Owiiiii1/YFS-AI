@@ -32,7 +32,9 @@ Client policy section bodies were not rewritten.
 
 ## Commit
 
-See git history on `main` after push.
+`59a6b7c` on `main`
+
+Stop Voice Assistant from escalating ordinary policy questions.
 
 ## Files
 
