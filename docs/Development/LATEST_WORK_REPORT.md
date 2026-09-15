@@ -2,63 +2,59 @@
 
 ## Task
 
-Voice Session Context, Prompt Orchestrator, FAST vs TOOL path, and ElevenLabs buffer-word fillers before YFS tool follow-ups. No real YFS Core or Bitrix connectors.
+Add a dedicated Laravel webhook tool endpoint for ElevenLabs Native Agent. Keep Node Custom LLM as experimental/fallback. No YFS Core / Bitrix. No voice-runtime changes.
 
 ## Status
 
-Implemented and covered by automated tests. Production systemd was not restarted. Live fast-path and filler speech still need a phone check after `sudo systemctl restart yfs-voice-runtime`.
+Implemented and covered by Laravel tests. Endpoint is fail-closed until `ELEVENLABS_TOOL_TOKEN` is set in production `.env`.
 
-Filler protocol is supported: ElevenLabs Custom LLM buffer words in the same SSE stream, content ending with `"... "`, no `[DONE]` until the final answer.
+This is a proof-of-concept surface, not a live cutover off Custom LLM.
 
 ## Commit
 
-`bec22d2` on `main`
-
-Add Voice Session Context, prompt orchestration, and tool fillers.
+Recorded after `git commit` / `git push origin main`.
 
 ## Files changed
 
-Laravel: VoiceSessionContext, PromptOrchestrator, FillerPhraseService, session turn API, tool metadata.
+- `app/Http/Controllers/Api/ElevenLabsTestContextController.php`
+- `app/Http/Middleware/AuthenticateElevenLabsTool.php`
+- `routes/api.php`
+- `config/services.php`
+- `.env.example` (`ELEVENLABS_TOOL_TOKEN=` placeholder only)
+- `tests/Feature/ElevenLabsWebhookToolTest.php`
+- `docs/VOICE_ARCHITECTURE.md`
+- this report
 
-voice-runtime: session turn client, prompt/tool injection, filler SSE, fast/tool path logging.
-
-Docs: `docs/VOICE_ARCHITECTURE.md`, `docs/VOICE_ASSISTANT.md`, this report.
+Not changed: `POST /api/internal/voice/tools/execute`, Node `voice-runtime`.
 
 ## Architecture
 
-Laravel `POST /api/internal/voice/session/turn` returns system prompt, allowed tools, and filler hints. voice-runtime injects that prompt and only offers allowed YFS tools to Gemini.
+Experimental target path:
 
-FAST PATH (`What is the YFS test event?`): synthetic SESSION yfs_context is preloaded; test tool is omitted; one Gemini round.
+Twilio → ElevenLabs Native Agent (hosted LLM) → `POST /api/voice/tools/test-context` → Laravel synthetic JSON.
 
-TOOL PATH (`Check the latest YFS test status.`): tool is allowed; after functionCall, SSE filler `"... "` then Laravel execute then second Gemini round.
+Auth: Bearer `ELEVENLABS_TOOL_TOKEN` only. Not `VOICE_RUNTIME_INTERNAL_TOKEN`, not Custom LLM / provider keys.
+
+Current production realtime remains Custom LLM + Gemini until a later cutover.
 
 ## Tests
 
-Laravel `php artisan test --filter Voice`: 18 passed (7 skipped, sqlite feature suite unrelated or sqlite-gated).
+`php artisan test --filter ElevenLabsWebhookToolTest`: 4 passed.
 
-voice-runtime `npm test`: 41 passed. `typecheck` passed.
+`php artisan test --filter Voice`: 19 passed, 7 skipped (sqlite-gated / unrelated).
 
 ## Runtime verification
 
-Not restarted. Dist will be built before commit. Laravel route cache should be refreshed on deploy.
+Laravel route cache rebuilt. No systemd restart required for this Laravel-only endpoint. PHP-FPM / Laravel will serve the new route after route cache.
 
-## Live test required
-
-After systemd restart:
-
-1. Fast path: **What is the YFS test event?**
-   Expect `voice.response.fast_path`, `rounds=1`, no `voice.tool.requested`. Spoken: test-only YFS Test Event / session context is working.
-
-2. Tool path: **Check the latest YFS test status.**
-   Expect filler (`voice.filler.selected`), then `voice.tool.requested` / `completed`, `voice.response.tool_path`, `rounds=2`. Spoken: short “let me check...” then test-only status.
+Set `ELEVENLABS_TOOL_TOKEN` in production `.env` before configuring the ElevenLabs webhook tool.
 
 ## Known limitations
 
-- Session context is synthetic test data only.
-- Real YFS Core / Bitrix remain Planned.
-- Filler does not remove the first Gemini round; it covers the tool follow-up gap.
-- Disable fillers with `VOICE_FILLER_ENABLED=false`.
+- Synthetic test payload only.
+- Native Agent path is experimental PoC, not production routing.
+- Empty token always returns 401.
 
 ## Next recommended step
 
-`sudo systemctl restart yfs-voice-runtime` and run the two live phrases above.
+Set `ELEVENLABS_TOOL_TOKEN`, point an ElevenLabs Native Agent webhook tool at `https://ai.youngfashionshow.com/api/voice/tools/test-context`, and prove a live tool call without Custom LLM.

@@ -5,9 +5,11 @@ use App\Http\Controllers\Api\MetaInstagramDataDeletionController;
 use App\Http\Controllers\Api\MetaInstagramDeauthorizeController;
 use App\Http\Controllers\Api\MetaInstagramWebhookController;
 use App\Http\Controllers\Api\TelegramWebhookController;
+use App\Http\Controllers\Api\ElevenLabsTestContextController;
 use App\Http\Controllers\Api\VoiceRuntimeConfigController;
 use App\Http\Controllers\Api\VoiceSessionTurnController;
 use App\Http\Controllers\Api\VoiceToolController;
+use App\Http\Middleware\AuthenticateElevenLabsTool;
 use App\Http\Middleware\AuthenticateVoiceRuntime;
 use Illuminate\Support\Facades\Route;
 
@@ -19,6 +21,10 @@ Route::post('/meta/instagram/data-deletion', MetaInstagramDataDeletionController
     ->name('api.meta.instagram.data-deletion');
 Route::post('/telegram/webhook', TelegramWebhookController::class)
     ->name('api.telegram.webhook');
+Route::post('/voice/tools/test-context', ElevenLabsTestContextController::class)
+    ->middleware(AuthenticateElevenLabsTool::class)
+    ->name('api.voice.tools.test-context');
+
 Route::get('/internal/voice-runtime/config', VoiceRuntimeConfigController::class)
     ->middleware(AuthenticateVoiceRuntime::class)
     ->name('api.internal.voice-runtime.config');

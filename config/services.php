@@ -68,6 +68,10 @@ return [
         'page_access_token' => env('META_PAGE_ACCESS_TOKEN'),
     ],
 
+    'elevenlabs' => [
+        'tool_token' => env('ELEVENLABS_TOOL_TOKEN'),
+    ],
+
     'voice_runtime' => [
         'internal_token' => env('VOICE_RUNTIME_INTERNAL_TOKEN'),
         'filler_enabled' => env('VOICE_FILLER_ENABLED', true),

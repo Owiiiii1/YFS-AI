@@ -88,7 +88,9 @@ Realtime audio and conversation ownership:
 - conversation ownership
 - audio recording (ElevenLabs is the source of telephone conversation audio)
 
-ElevenLabs hosted/native LLM is **not** the business brain. The agent LLM is the YFS Custom LLM gateway.
+**Current production** still uses the YFS Custom LLM gateway as the agent LLM.
+
+**Target (not production yet):** native ElevenLabs Agent LLM plus Laravel webhook tools. See § 13. The Custom LLM Node runtime is kept as experimental/fallback and must not be removed.
 
 ### voice-runtime (`/var/www/yfs-ai/voice-runtime`) — **Current**
 
@@ -121,6 +123,7 @@ nginx: `/voice-engine/` → that process (Laravel `location /` unchanged)
 - Voice Prompt Orchestrator (GLOBAL / SESSION / TOPIC)
 - filler phrase registry
 - internal turn: `POST /api/internal/voice/session/turn`
+- **Experimental PoC (native ElevenLabs):** `POST /api/voice/tools/test-context` — dedicated Bearer `ELEVENLABS_TOOL_TOKEN`, independent of voice-runtime. Synthetic test JSON only. Not YFS Core / Bitrix.
 
 **Planned:**
 
@@ -328,13 +331,18 @@ It is **experimental / legacy infrastructure**, not production routing. It is sk
 | Gemini Live API | Not selected. Gemini is a text LLM behind Custom LLM. |
 | Direct Twilio → YFS raw audio runtime | Not selected. Twilio is phone transport into ElevenLabs. |
 | Speech Engine as production routing | Not selected. Experimental / legacy only. |
-| ElevenLabs hosted/native LLM as business brain | Not selected. |
 | OpenAI Realtime as the voice layer | Not selected for Phase 2. |
 | Stacked speech: ElevenLabs STT/TTS + OpenAI Realtime speech | Not selected. |
 
-**Production choice for Phase 2 realtime:**
+**Current production realtime (until native path is proven):**
 
 ElevenLabs voice layer + YFS Custom LLM + Gemini.
+
+**Target realtime (experimental PoC in § 13):**
+
+Twilio → ElevenLabs Native Agent (hosted LLM) → Laravel webhook tools.
+
+The previous “native LLM is not the business brain” decision is superseded as the *target*. It is **not** current production. Custom LLM remains the live path and the fallback.
 
 ---
 
@@ -344,6 +352,46 @@ The following are **not** current:
 
 - YFS Core or Bitrix24 Voice tools / real connectors
 - production business tools beyond the test tool
+- production routing through ElevenLabs Native Agent webhook tools (that path is **experimental PoC** only)
 - post-call persistence / analysis / Telegram for calls
 - Voice admin (Calls / Follow-ups) beyond a Call center placeholder
 - `voice_*` database tables
+
+---
+
+## 13. Experimental — ElevenLabs Native Agent webhook tools
+
+**Experimental proof-of-concept.** Not production routing. This is the first Laravel surface for the *target* Voice Consultant path before any live cutover off Custom LLM.
+
+```text
+Twilio
+  ↓
+ElevenLabs Native Agent
+  ├─ STT / turn-taking / TTS (ElevenLabs)
+  └─ native / hosted ElevenLabs LLM
+        ↓
+Webhook Tool
+POST /api/voice/tools/test-context
+        ↓
+Laravel (synthetic test JSON)
+```
+
+Current test tool URL:
+
+`https://ai.youngfashionshow.com/api/voice/tools/test-context`
+
+Auth: `Authorization: Bearer` using `ELEVENLABS_TOOL_TOKEN` only.
+
+Do **not** use `VOICE_RUNTIME_INTERNAL_TOKEN`, `VOICE_LLM_SHARED_SECRET`, Gemini, OpenAI, or ElevenLabs API keys on this endpoint.
+
+This endpoint:
+
+- does not go through Node `voice-runtime`
+- does not call `POST /api/internal/voice/tools/execute`
+- does not connect to YFS Core or Bitrix
+- accepts no business parameters
+- returns synthetic JSON: `event_name`, `status`, `message`, `source=yfs_ai_test`
+
+Missing or invalid Bearer → `401` JSON `{"message":"Unauthorized"}`. Empty configured token fails closed (401).
+
+Node Custom LLM (`POST /voice-engine/v1/chat/completions`) stays in place as experimental/fallback. Do not delete it. Do not treat this webhook as a completed Voice Consultant migration.
