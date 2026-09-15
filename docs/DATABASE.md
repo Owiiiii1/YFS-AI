@@ -38,7 +38,7 @@ YFS AI also has a **read-only** MySQL connection `jfs` (`JFS_DB_*`) to the main 
 | `bot_replies` | Closed Instagram bot cases: form sent, manager request, operator needed, JFS found/not found. |
 | `meta_data_deletion_requests` | Meta data-deletion callback receipts. Status is public via confirmation code only. |
 | `telegram_settings` | Telegram bot token (encrypted) and optional channel. Configured from Settings UI. |
-| `voice_assistant_settings` | Editable Voice Assistant behaviour sections (Call Center → Bot settings). Assembled into `POST /api/voice/context`. Not injected into ElevenLabs conversation initiation yet. |
+| `voice_assistant_settings` | Editable Voice Assistant behaviour sections (Call Center → Bot settings). Assembled into `POST /api/voice/context` and the ElevenLabs initiation adapter. |
 | `orders` / `calendar_*` | Legacy cake/booking tables. Hidden from the live YFS UI. |
 | `ai_runs` / `bot_decision_traces` / `bot_prompt_revisions` | Bot telemetry / prompt history. Empty. |
 

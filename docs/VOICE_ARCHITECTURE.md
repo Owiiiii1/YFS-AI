@@ -126,11 +126,13 @@ nginx: `/voice-engine/` → that process (Laravel `location /` unchanged)
 - internal turn: `POST /api/internal/voice/session/turn`
 - **Selected Phase 2 path (POC SUCCESS, smoke-test):** `POST /api/voice/tools/test-context` — dedicated Bearer `ELEVENLABS_TOOL_TOKEN`, independent of voice-runtime. Synthetic test JSON only. Not YFS Core / Bitrix.
 - Voice Assistant bot settings (Call Center → Bot settings): admin-editable sections in `voice_assistant_settings`, filled from `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`.
-- Native Agent runtime prompt contract: `POST /api/voice/context` — `VoiceAssistantPromptBuilder` assembles enabled sections. Same Bearer `ELEVENLABS_TOOL_TOKEN`. Not yet applied to ElevenLabs conversation initiation.
+- Native Agent runtime prompt contract: `POST /api/voice/context` — diagnostic JSON from `VoiceAssistantPromptBuilder`. Same Bearer `ELEVENLABS_TOOL_TOKEN`.
+- Native Agent Conversation Initiation adapter: `POST /api/voice/elevenlabs/conversation-initiation` — ElevenLabs `conversation_initiation_client_data` with system prompt override. Same Bearer. Not auto-registered in the ElevenLabs UI.
 
 **Planned:**
 
-- wire `/api/voice/context` into ElevenLabs Conversation Initiation / dynamic variables / overrides (no ElevenLabs API config change in this step)
+- operator pastes the initiation webhook URL into ElevenLabs (this step does not change ElevenLabs via API)
+- customer / language / YFS Core / Bitrix lookup on the initiation webhook
 - YFS Core / Bitrix24 Voice tools and real connectors
 - production business tools
 - persistence and post-call workflows
@@ -360,7 +362,8 @@ The following are **not** current:
 - full production cutover of every inbound number onto Native Agent (existing Custom LLM routing is unchanged fallback)
 - post-call persistence / analysis / Telegram for calls
 - Voice admin Calls / Follow-ups
-- ElevenLabs conversation initiation wired to `/api/voice/context` (backend contract exists; agent config is unchanged)
+- customer / language / YFS Core / Bitrix lookup on the initiation webhook
+- ElevenLabs UI webhook URL (backend adapter exists; this repo does not change the agent settings)
 - `voice_calls` / other post-call `voice_*` tables (`voice_assistant_settings` exists)
 
 ---
@@ -418,7 +421,7 @@ Missing or invalid Bearer → `401` JSON `{"message":"Unauthorized"}`. Empty con
 
 ## 14. Native Agent conversation context contract
 
-**Current (backend only).** ElevenLabs agent configuration is **not** changed automatically in this step.
+**Current (diagnostic / runtime JSON).** Unchanged. Not the ElevenLabs webhook body.
 
 ```text
 Admin
@@ -428,15 +431,11 @@ voice_assistant_settings
 VoiceAssistantPromptBuilder
   ↓
 authenticated POST /api/voice/context
-  ↓
-ElevenLabs conversation initialization
 ```
 
-URL:
+URL: `https://ai.youngfashionshow.com/api/voice/context`
 
-`https://ai.youngfashionshow.com/api/voice/context`
-
-Auth: `Authorization: Bearer` using `ELEVENLABS_TOOL_TOKEN` only. Same middleware as the smoke-test tool. Do not record token values.
+Auth: `Authorization: Bearer` using `ELEVENLABS_TOOL_TOKEN` only. Do not record token values.
 
 JSON:
 
@@ -448,12 +447,59 @@ JSON:
 }
 ```
 
-- `prompt` = small immutable system wrapper + enabled `voice_assistant_settings` in `sort_order`, each under its title heading. Disabled sections are omitted. Section bodies are not rewritten.
-- `version` is a deterministic hash of wrapper version + enabled section key/title/instructions/sort_order. Same settings → same version. Editing instructions changes version.
-- `generated_at` is request time and is not part of `version`.
+## 15. ElevenLabs Conversation Initiation webhook adapter
 
-This contract is ready for a later ElevenLabs Conversation Initiation / dynamic variables / overrides hookup. Do not treat it as a live prompt override on the production agent yet.
+**Current (backend adapter).** This repo does **not** change ElevenLabs agent settings. The operator pastes the URL and header into ElevenLabs.
+
+Official contract (ElevenLabs Personalization / Twilio personalization docs): the webhook **POST**s caller metadata and must return `conversation_initiation_client_data`. `type` is included as in the current ElevenLabs examples. Only the system prompt override is sent. Custom `dynamic_variables` are omitted until the agent declares them. Customer / language / YFS Core / Bitrix context is **not** connected.
+
+```text
+Admin
+  ↓
+voice_assistant_settings
+  ↓
+VoiceAssistantPromptBuilder
+  ↓
+authenticated POST /api/voice/elevenlabs/conversation-initiation
+  ↓
+ElevenLabs conversation_initiation_client_data
+  ↓
+Native Agent system prompt override
+```
+
+Production URL to paste into ElevenLabs:
+
+`https://ai.youngfashionshow.com/api/voice/elevenlabs/conversation-initiation`
+
+HTTP method: `POST`
+
+Header to create in ElevenLabs (secret value stays in ElevenLabs secrets / `ELEVENLABS_TOOL_TOKEN`; do not put the value in git or docs):
+
+`Authorization: Bearer <token>`
+
+Example response shape (prompt body omitted):
+
+```json
+{
+  "type": "conversation_initiation_client_data",
+  "conversation_config_override": {
+    "agent": {
+      "prompt": {
+        "prompt": "<assembled Voice Assistant prompt>"
+      }
+    }
+  }
+}
+```
+
+Incoming fields such as `caller_id`, `agent_id`, `called_number`, `call_sid`, and `conversation_id` are accepted and ignored.
+
+System Prompt for a new inbound call can now come from:
+
+YFS Admin → `voice_assistant_settings` → VoiceAssistantPromptBuilder → initiation webhook → ElevenLabs.
 
 Node Custom LLM (`POST /voice-engine/v1/chat/completions`) remains **experimental/fallback** and is not deleted. Existing Custom LLM production routing is unchanged.
 
-Next: connect this endpoint to ElevenLabs conversation initialization. Then the first real read-only YFS Core tool. Bitrix is not connected yet.
+`POST /api/voice/tools/test-context` remains the smoke-test tool.
+
+Next: paste this webhook URL and Bearer header into ElevenLabs. Then customer/language lookup. Bitrix is not connected yet.

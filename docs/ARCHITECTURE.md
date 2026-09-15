@@ -52,7 +52,7 @@ Phase 2 selected architecture is ElevenLabs Native Agent plus Laravel webhook to
 | Auth / admin shell | custom-admin-kit login, dashboard, users, settings |
 | Instagram assistant | OAuth, webhooks, conversations, YFS prompt routing, JFS read-only facts, bot replies |
 | Bot management | Structured prompt editor, enable/disable, prompt analysis |
-| Voice Assistant bot settings | Call Center → Bot settings. Editable behaviour sections from the client Customer Support policy. Assembled by `VoiceAssistantPromptBuilder` for `POST /api/voice/context`. Not yet applied to ElevenLabs conversation initiation. |
+| Voice Assistant bot settings | Call Center → Bot settings. Editable behaviour sections from the client Customer Support policy. Assembled by `VoiceAssistantPromptBuilder` for `POST /api/voice/context` and the ElevenLabs initiation adapter. |
 | AI providers | Stored API keys and role connections (`bot_runtime`, `prompt_analysis`) |
 | Telegram bot | Bound channel in Settings. Closed Instagram cases are posted there |
 | CRM screens | Customers. Orders and calendar are hidden. |
@@ -90,7 +90,9 @@ ElevenLabs Native Agent
 
 Smoke-test: `POST /api/voice/tools/test-context` (Bearer `ELEVENLABS_TOOL_TOKEN`). Confirmed via ElevenLabs Test Tool and a real voice conversation.
 
-Runtime prompt contract: `POST /api/voice/context` (same Bearer). Assembled from Call Center Bot settings. Not yet attached to ElevenLabs conversation initiation.
+Runtime prompt contract: `POST /api/voice/context` (same Bearer). Diagnostic JSON from Call Center Bot settings.
+
+ElevenLabs Conversation Initiation adapter: `POST /api/voice/elevenlabs/conversation-initiation` (same Bearer). Paste this URL into ElevenLabs. This repo does not change ElevenLabs settings.
 
 **Experimental / fallback** (existing Custom LLM production routing, unchanged):
 

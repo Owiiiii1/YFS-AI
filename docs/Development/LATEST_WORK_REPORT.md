@@ -2,19 +2,17 @@
 
 ## Task
 
-Connect Call Center → Bot settings to a Laravel runtime prompt contract for ElevenLabs Native Agent. Build `VoiceAssistantPromptBuilder` and authenticated `POST /api/voice/context`. Do not change ElevenLabs agent config, YFS Core, Bitrix, Twilio, Instagram/Facebook, voice-runtime, or Custom LLM.
+Add a separate ElevenLabs Conversation Initiation Client Data webhook adapter. Reuse `VoiceAssistantPromptBuilder`. Do not change `/api/voice/context`, test-context, ElevenLabs UI, nginx, secrets, YFS Core, Bitrix, Twilio, Instagram, or Node voice-runtime.
 
 ## Status
 
 Done.
 
-Enabled `voice_assistant_settings` are assembled into a structured prompt. The Native Agent can fetch it from `POST /api/voice/context` with the existing `ELEVENLABS_TOOL_TOKEN` Bearer auth. ElevenLabs conversation initiation is not wired yet.
+Backend adapter is live. This repo did **not** paste the URL into ElevenLabs or change agent settings.
 
 ## Commit
 
-`038014f` on `main`
-
-Expose Voice Assistant admin settings as an authenticated Native Agent context.
+See git history on `main` after push.
 
 ## Architecture
 
@@ -25,44 +23,62 @@ voice_assistant_settings
   ↓
 VoiceAssistantPromptBuilder
   ↓
-authenticated POST /api/voice/context
+authenticated POST /api/voice/elevenlabs/conversation-initiation
   ↓
-ElevenLabs conversation initialization
+ElevenLabs conversation_initiation_client_data
+  ↓
+Native Agent system prompt override
 ```
 
-This step delivers the backend contract only. ElevenLabs is not updated via API. Node Custom LLM remains experimental/fallback and is not deleted.
+System Prompt for a new inbound call can come from YFS Admin → DB → PromptBuilder → initiation webhook → ElevenLabs, after the operator pastes the URL.
 
-## Endpoint contract
+Customer / language / YFS Core / Bitrix context is not connected.
 
-`POST /api/voice/context`
+## Endpoint
 
-Auth: `Authorization: Bearer` using `ELEVENLABS_TOOL_TOKEN` (same `AuthenticateElevenLabsTool` as the smoke-test). Empty token fails closed (401). Voice-runtime token is rejected.
+Production URL to paste into ElevenLabs:
 
-JSON:
+`https://ai.youngfashionshow.com/api/voice/elevenlabs/conversation-initiation`
+
+HTTP method: `POST`
+
+Header to create in ElevenLabs (value is `ELEVENLABS_TOOL_TOKEN`; do not put the value in git/docs):
+
+`Authorization: Bearer <token>`
+
+Same `AuthenticateElevenLabsTool` as tools and `/api/voice/context`. Empty token fails closed (401).
+
+Incoming JSON fields such as `caller_id`, `agent_id`, `called_number`, `call_sid`, and `conversation_id` are accepted and ignored.
+
+## Exact ElevenLabs response contract
+
+Official docs (Personalization / Twilio personalization): webhook response uses `conversation_initiation_client_data`. Current examples include `"type": "conversation_initiation_client_data"`, so this adapter sends `type`.
+
+Only the system prompt override is returned. `llm`, `first_message`, `tts`, and `dynamic_variables` are omitted so this adapter does not change those agent fields. Custom dynamic variables are not declared on our side yet.
 
 ```json
 {
-  "prompt": "...assembled prompt...",
-  "version": "v1-<sha256>",
-  "generated_at": "<ISO-8601 UTC>"
+  "type": "conversation_initiation_client_data",
+  "conversation_config_override": {
+    "agent": {
+      "prompt": {
+        "prompt": "<assembled Voice Assistant prompt>"
+      }
+    }
+  }
 }
 ```
 
-- `prompt`: immutable system wrapper + enabled sections in `sort_order`, each under `## {title}`. Disabled sections omitted. Section bodies not rewritten. No invented business facts.
-- `version`: deterministic hash of wrapper version + enabled key/title/instructions/sort_order. Same settings → same version. Instruction edits change version. `generated_at` is not part of the hash.
-- No secrets, tokens, or extra fields.
+`POST /api/voice/context` remains diagnostic JSON `{prompt, version, generated_at}` and was not changed.
 
-Smoke-test `POST /api/voice/tools/test-context` is unchanged.
+## Files
 
-## Files changed
-
-- `app/Services/Voice/Prompt/VoiceAssistantPromptBuilder.php`
-- `app/Services/Voice/Prompt/VoiceAssistantRuntimePrompt.php`
-- `app/Http/Controllers/Api/VoiceContextController.php`
+- `app/Services/ElevenLabs/ConversationInitiationClientData.php`
+- `app/Http/Controllers/Api/ElevenLabsConversationInitiationController.php`
 - `routes/api.php`
-- `tests/Unit/Voice/VoiceAssistantPromptBuilderTest.php`
-- `tests/Feature/VoiceContextEndpointTest.php`
-- `tests/Feature/VoiceContextEndpointDatabaseTest.php`
+- `tests/Unit/Voice/ConversationInitiationClientDataTest.php`
+- `tests/Feature/ElevenLabsConversationInitiationTest.php`
+- `tests/Feature/ElevenLabsConversationInitiationDatabaseTest.php`
 - `docs/VOICE_ARCHITECTURE.md`
 - `docs/VOICE_ASSISTANT.md`
 - `docs/ARCHITECTURE.md`
@@ -72,40 +88,52 @@ Smoke-test `POST /api/voice/tools/test-context` is unchanged.
 
 ## Tests
 
-`php artisan test --filter VoiceAssistantPromptBuilderTest`: 3 passed (enabled/sort, no rewrite, stable vs changed version).
+`php artisan test --filter ConversationInitiationClientDataTest`: passed (contract + builder prompt, no extra keys).
 
-`php artisan test --filter VoiceContextEndpointTest`: 5 passed (auth required, wrong token, voice-runtime token rejected, empty token fail-closed, test-context unchanged).
+`php artisan test --filter ElevenLabsConversationInitiationTest`: passed (missing auth 401, wrong Bearer 401, voice-runtime token rejected, test-context unchanged).
 
-`php artisan test --filter VoiceContextEndpointDatabaseTest`: skipped on this host (no `pdo_sqlite`). Covers valid token JSON shape, no secrets, disabled omitted, sort_order, instruction change vs identical version.
+`php artisan test --filter ElevenLabsConversationInitiationDatabaseTest`: skipped (no `pdo_sqlite`). Covers valid 200, extra ElevenLabs fields, disabled sections omitted, sort_order, instruction change, no secrets.
 
-`php artisan test --filter ElevenLabsWebhookToolTest`: 4 passed.
+`php artisan test --filter VoiceContextEndpointTest`: passed.
 
-Guest `POST /api/voice/context` on production returns `401 {"message":"Unauthorized"}`.
+`php artisan test --filter ElevenLabsWebhookToolTest`: passed.
 
-## Production actions
+Combined run: 14 passed, 4 skipped.
 
-- Laravel route cache rebuilt.
-- No migration (existing `voice_assistant_settings`).
-- No nginx change.
-- No secret/token rotation.
-- ElevenLabs agent configuration not changed.
-- Local builder run confirmed enabled General rules and VIP policy text are present in the assembled prompt.
+## Production smoke result
+
+- Unauthenticated POST → `401 {"message":"Unauthorized"}`
+- Authenticated POST with extra telephony fields → `200`
+- Keys: `type`, `conversation_config_override`
+- `type` = `conversation_initiation_client_data`
+- Assembled prompt present (wrapper + General rules)
+- Token not present in response body
+- No `llm` override
+- Token value was not printed
+
+Route cache rebuilt. Three voice API routes present, including the new adapter.
 
 ## What was not changed
 
+- ElevenLabs agent configuration / System Prompt in the ElevenLabs UI
+- `/api/voice/context`
+- `/api/voice/tools/test-context`
+- Node voice-runtime
+- Custom LLM
+- Twilio
+- Instagram/Facebook
 - YFS Core
 - Bitrix
-- Twilio routing
-- Instagram/Facebook
-- Node `voice-runtime`
-- Custom LLM
-- `POST /api/voice/tools/test-context`
-- production ElevenLabs agent configuration
 - nginx
 - secrets
 
-## Next recommended step
+## Next manual step in ElevenLabs
 
-Wire `POST /api/voice/context` into ElevenLabs Conversation Initiation / dynamic variables / overrides so a new conversation uses the assembled admin prompt without manually editing the ElevenLabs business prompt.
+1. Conversation Initiation Client Data Webhook URL = `https://ai.youngfashionshow.com/api/voice/elevenlabs/conversation-initiation`
+2. Method POST
+3. Header `Authorization: Bearer <ELEVENLABS_TOOL_TOKEN>`
+4. Confirm Security → Overrides → System prompt stays enabled
+5. Confirm Security → Fetch initiation client data from a webhook stays enabled
+6. Place a real inbound call and confirm the agent uses the Admin Bot settings prompt
 
-Do not connect YFS Core or Bitrix in that step unless explicitly requested.
+Do not connect customer lookup, YFS Core, or Bitrix until the next step.

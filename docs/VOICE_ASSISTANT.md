@@ -11,7 +11,7 @@ Realtime production path is confirmed by a successful inbound telephone call.
 
 **Experimental / fallback:** ElevenLabs voice layer + YFS Custom LLM gateway + Gemini. Existing Custom LLM routing is unchanged and is not deleted.
 
-Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center has admin-editable Voice Assistant bot settings. `POST /api/voice/context` exposes the assembled prompt to ElevenLabs Native Agent auth; it is **not** yet wired into ElevenLabs conversation initiation. YFS Core / Bitrix tools, post-call pipeline, and Calls / Follow-ups remain **Planned**.
+Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center has admin-editable Voice Assistant bot settings. `POST /api/voice/context` is the diagnostic prompt JSON. `POST /api/voice/elevenlabs/conversation-initiation` is the ElevenLabs Conversation Initiation adapter. Customer / language / YFS Core / Bitrix context is not connected. This repo does not change ElevenLabs UI settings.
 
 Related documents:
 
@@ -32,7 +32,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + `/api/voice/context` Prompt Builder **Current** (not applied to ElevenLabs conversation init yet). YFS Core / Bitrix / post-call / Calls admin **Planned**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + Prompt Builder + initiation webhook adapter **Current** (paste URL into ElevenLabs; this repo does not change the agent). YFS Core / Bitrix / post-call / Calls admin **Planned**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
 **Selected Phase 2 (POC SUCCESS, see `docs/VOICE_ARCHITECTURE.md` § 13):**
@@ -442,12 +442,14 @@ voice_assistant_settings
   ↓
 VoiceAssistantPromptBuilder
   ↓
-authenticated POST /api/voice/context
+authenticated POST /api/voice/elevenlabs/conversation-initiation
   ↓
-ElevenLabs conversation initialization
+ElevenLabs conversation_initiation_client_data (system prompt override)
 ```
 
-ElevenLabs agent configuration is not updated via API in this step. The next step is to attach this contract to Conversation Initiation / dynamic variables / overrides.
+Diagnostic JSON remains `POST /api/voice/context`.
+
+Paste into ElevenLabs: `https://ai.youngfashionshow.com/api/voice/elevenlabs/conversation-initiation` with header `Authorization: Bearer <token>`. This repo does not change ElevenLabs settings. Customer / language / YFS Core / Bitrix context is not connected.
 
 Still **Planned** (not built):
 

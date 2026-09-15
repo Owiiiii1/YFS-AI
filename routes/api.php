@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\MetaInstagramDeauthorizeController;
 use App\Http\Controllers\Api\MetaInstagramWebhookController;
 use App\Http\Controllers\Api\TelegramWebhookController;
 use App\Http\Controllers\Api\ElevenLabsTestContextController;
+use App\Http\Controllers\Api\ElevenLabsConversationInitiationController;
 use App\Http\Controllers\Api\VoiceContextController;
 use App\Http\Controllers\Api\VoiceRuntimeConfigController;
 use App\Http\Controllers\Api\VoiceSessionTurnController;
@@ -28,6 +29,9 @@ Route::post('/voice/tools/test-context', ElevenLabsTestContextController::class)
 Route::post('/voice/context', VoiceContextController::class)
     ->middleware(AuthenticateElevenLabsTool::class)
     ->name('api.voice.context');
+Route::post('/voice/elevenlabs/conversation-initiation', ElevenLabsConversationInitiationController::class)
+    ->middleware(AuthenticateElevenLabsTool::class)
+    ->name('api.voice.elevenlabs.conversation-initiation');
 
 Route::get('/internal/voice-runtime/config', VoiceRuntimeConfigController::class)
     ->middleware(AuthenticateVoiceRuntime::class)
