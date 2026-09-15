@@ -14,7 +14,9 @@ These settings are not injected into the ElevenLabs Native Agent. Runtime Prompt
 
 ## Commit
 
-See git history on `main` after push.
+`ab92a22` on `main`
+
+Add editable Voice Assistant bot settings from the client support policy.
 
 ## Files changed
 
