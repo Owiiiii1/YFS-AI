@@ -29,6 +29,7 @@ use OwlSolutions\CustomAdminKit\Support\AdminRouteMiddleware;
 Route::middleware(AdminRouteMiddleware::stack())->group(function () {
     Route::get('/dashboard', static fn () => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/call-center', [VoiceCallsController::class, 'index'])->name('call-center.index');
+    Route::get('/call-center/contacts', [VoiceCallsController::class, 'contacts'])->name('call-center.contacts');
     Route::get('/call-center/bot-settings', [VoiceBotSettingsController::class, 'index'])->name('call-center.bot-settings');
     Route::patch('/call-center/bot-settings/{key}', [VoiceBotSettingsController::class, 'update'])->name('call-center.bot-settings.update');
 

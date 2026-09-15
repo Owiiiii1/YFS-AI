@@ -3,6 +3,7 @@
 namespace Tests\Unit\Voice;
 
 use App\Services\Voice\Calls\VoiceTranscriptNormalizer;
+use App\Services\Voice\Calls\VoiceTranscriptSanitizer;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -13,7 +14,7 @@ class VoiceTranscriptNormalizerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->normalizer = new VoiceTranscriptNormalizer;
+        $this->normalizer = new VoiceTranscriptNormalizer(new VoiceTranscriptSanitizer);
     }
 
     #[Test]
@@ -55,5 +56,33 @@ class VoiceTranscriptNormalizerTest extends TestCase
 
         $this->assertSame('Hello from the agen…', $preview);
         $this->assertNull($this->normalizer->preview([]));
+    }
+
+    #[Test]
+    public function rus_wrappers_are_removed_and_spoken_text_remains(): void
+    {
+        $turns = $this->normalizer->normalize([
+            ['role' => 'agent', 'message' => '<Rus>Доброжелательно> Конечно, буду говорить по-русски.</Rus>'],
+        ]);
+
+        $this->assertCount(1, $turns);
+        $this->assertSame('Конечно, буду говорить по-русски.', $turns[0]['message']);
+        $this->assertStringNotContainsString('<Rus>', $turns[0]['message']);
+        $this->assertStringNotContainsString('</Rus>', $turns[0]['message']);
+        $this->assertStringNotContainsString('Доброжелательно>', $turns[0]['message']);
+    }
+
+    #[Test]
+    public function equivalent_language_tags_are_cleaned(): void
+    {
+        $turns = $this->normalizer->normalize([
+            ['role' => 'agent', 'message' => '<Ukr>Звичайно, розкажу українською.</Ukr>'],
+            ['role' => 'agent', 'message' => '<English>Sure, I can continue in English.</English>'],
+        ]);
+
+        $this->assertSame('Звичайно, розкажу українською.', $turns[0]['message']);
+        $this->assertSame('Sure, I can continue in English.', $turns[1]['message']);
+        $this->assertStringNotContainsString('<Ukr>', $turns[0]['message']);
+        $this->assertStringNotContainsString('<English>', $turns[1]['message']);
     }
 }

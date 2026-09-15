@@ -137,6 +137,60 @@ class ElevenLabsPostCallWebhookDatabaseTest extends TestCase
         $this->assertSame(0, VoiceCall::query()->count());
     }
 
+    #[Test]
+    public function actual_conversation_language_updates_call_and_contact_despite_english_main_language(): void
+    {
+        $this->postSigned($this->transcriptionPayload([
+            'data' => [
+                'conversation_id' => 'conv_switch_ru',
+                'transcript' => [
+                    ['role' => 'agent', 'message' => 'Hello, this is the Young Fashion Show AI assistant. How can I help you today?'],
+                    ['role' => 'user', 'message' => 'Говори, что надо, русским языком.'],
+                    ['role' => 'agent', 'message' => '<Rus>Доброжелательно> Конечно, буду говорить по-русски.</Rus>'],
+                    ['role' => 'user', 'message' => 'Почему запись на шоу.'],
+                    ['role' => 'agent', 'message' => '<Rus>Сейчас поясню, как работает запись на шоу.</Rus>'],
+                    ['role' => 'user', 'message' => 'Моему ребёнку 15 лет. Она может участвовать?'],
+                    ['role' => 'agent', 'message' => '<Rus>Да, по возрасту это возможно. Нужна заявка в приложении.</Rus>'],
+                ],
+                'metadata' => [
+                    'main_language' => 'en',
+                ],
+            ],
+        ]))->assertOk();
+
+        $call = VoiceCall::query()->with('contact')->first();
+        $this->assertSame('ru', $call->language);
+        $this->assertSame('ru', $call->contact->preferred_language);
+        $this->assertSame('Конечно, буду говорить по-русски.', $call->transcript[2]['message']);
+        $this->assertStringNotContainsString('<Rus>', json_encode($call->transcript));
+    }
+
+    #[Test]
+    public function unknown_resolved_language_does_not_overwrite_existing_preferred_language(): void
+    {
+        VoiceContact::query()->create([
+            'phone_normalized' => '+15551234567',
+            'phone_display' => '+15551234567',
+            'preferred_language' => 'uk',
+            'calls_count' => 0,
+        ]);
+
+        $this->postSigned($this->transcriptionPayload([
+            'data' => [
+                'conversation_id' => 'conv_unknown_lang',
+                'transcript' => [
+                    ['role' => 'agent', 'message' => 'Hi'],
+                ],
+                'metadata' => [
+                    'main_language' => 'fr',
+                ],
+            ],
+        ]))->assertOk();
+
+        $this->assertSame('uk', VoiceContact::query()->first()->preferred_language);
+        $this->assertNull(VoiceCall::query()->first()->language);
+    }
+
     /**
      * @param  array<string, mixed>  $payload
      */

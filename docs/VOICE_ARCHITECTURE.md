@@ -249,10 +249,10 @@ Current post-call path:
 
 1. ElevenLabs `post_call_transcription` → HMAC `POST /api/voice/elevenlabs/post-call`
 2. idempotent persist into `voice_contacts` / `voice_calls`
-3. if `metadata.main_language` is en/ru/uk, store it on the call and as `voice_contacts.preferred_language`
+3. `VoiceConversationLanguageResolver` determines the sustained conversation language from transcript tags, later substantial turns, then script analysis. `metadata.main_language` is only a fallback when the transcript is inconclusive.
 4. Call Center → Voice Assistant shows the call journal
 
-Used ElevenLabs fields (when present): `type`, `event_timestamp`, `data.conversation_id`, `data.status`, `data.transcript[]` (`role`, `message`, `time_in_call_secs`), `data.metadata.start_time_unix_secs`, `data.metadata.call_duration_secs`, `data.metadata.termination_reason`, `data.metadata.main_language`, `data.metadata.phone_call` (`type`, `direction`, `external_number`, `agent_number`, `call_sid`), `data.analysis.transcript_summary`, `data.analysis.call_successful`, `data.agent_id`, `data.has_audio`. Optional `recording_url` / `audio_url` is stored only if it is an `http(s)` URL.
+Used ElevenLabs fields (when present): `type`, `event_timestamp`, `data.conversation_id`, `data.status`, `data.transcript[]` (`role`, `message`, `time_in_call_secs`; language/voice wrappers stripped), `data.metadata.start_time_unix_secs`, `data.metadata.call_duration_secs`, `data.metadata.termination_reason`, `data.metadata.main_language` (language fallback only), `data.metadata.phone_call` (`type`, `direction`, `external_number`, `agent_number`, `call_sid`), `data.analysis.transcript_summary`, `data.analysis.call_successful`, `data.agent_id`, `data.has_audio`. Optional `recording_url` / `audio_url` is stored only if it is an `http(s)` URL.
 
 Do **not** store voice calls in `conversations` / `conversation_messages`. Those tables are Instagram/Facebook only.
 

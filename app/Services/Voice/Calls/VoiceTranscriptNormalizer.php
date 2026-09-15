@@ -4,9 +4,14 @@ namespace App\Services\Voice\Calls;
 
 final class VoiceTranscriptNormalizer
 {
+    public function __construct(
+        private readonly VoiceTranscriptSanitizer $sanitizer,
+    ) {}
+
     /**
      * Map an ElevenLabs post_call_transcription `data.transcript` array into
      * a safe list of dialogue turns. Tool-only / empty / unknown roles are dropped.
+     * Language/voice wrapper tags are stripped before storage.
      *
      * @return list<array{role: string, speaker: string, message: string, time_in_call_secs: int|null}>
      */
@@ -32,7 +37,7 @@ final class VoiceTranscriptNormalizer
                 continue;
             }
 
-            $message = trim((string) ($item['message'] ?? ''));
+            $message = $this->sanitizer->sanitize((string) ($item['message'] ?? ''));
             if ($message === '') {
                 continue;
             }
@@ -50,6 +55,11 @@ final class VoiceTranscriptNormalizer
         return $turns;
     }
 
+    public function sanitizeMessage(?string $message): string
+    {
+        return $this->sanitizer->sanitize($message);
+    }
+
     /**
      * @param  list<array{message?: string}>  $turns
      */
@@ -59,7 +69,7 @@ final class VoiceTranscriptNormalizer
             '/\s+/',
             ' ',
             implode(' ', array_map(
-                static fn (array $turn): string => trim((string) ($turn['message'] ?? '')),
+                fn (array $turn): string => $this->sanitizer->sanitize((string) ($turn['message'] ?? '')),
                 $turns,
             )),
         ) ?? '');

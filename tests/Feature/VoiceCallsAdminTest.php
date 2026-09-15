@@ -82,6 +82,8 @@ class VoiceCallsAdminTest extends TestCase
                 ->where('calls.data.1.id', $older->id)
                 ->where('calls.data.0.brief', 'Asked about tickets')
                 ->where('selectedCall', null)
+                ->where('filters.phone', '')
+                ->where('filters.q', '')
             );
 
         $this->actingAs(User::factory()->create())
@@ -99,6 +101,66 @@ class VoiceCallsAdminTest extends TestCase
                 ->where('selectedCall.transcript.0.message', 'Hello from YFS')
                 ->where('selectedCall.transcript.1.speaker', 'client')
                 ->where('selectedCall.transcript.1.message', 'I need tickets')
+                ->where('selectedCall.contact.phone_normalized', '+15551234567')
             );
+    }
+
+    #[Test]
+    public function admin_can_filter_calls_by_phone_and_search_existing_contacts(): void
+    {
+        $ada = VoiceContact::query()->create([
+            'phone_normalized' => '+15551234567',
+            'phone_display' => '+1 555 123-4567',
+            'name' => 'Ada',
+            'calls_count' => 1,
+        ]);
+        $boris = VoiceContact::query()->create([
+            'phone_normalized' => '+380501234567',
+            'phone_display' => '+38 050 123 4567',
+            'name' => 'Boris',
+            'calls_count' => 1,
+        ]);
+
+        $adaCall = VoiceCall::query()->create([
+            'voice_contact_id' => $ada->id,
+            'elevenlabs_conversation_id' => 'conv_ada',
+            'phone' => '+15551234567',
+            'status' => 'done',
+            'summary' => 'Ada call',
+        ]);
+        VoiceCall::query()->create([
+            'voice_contact_id' => $boris->id,
+            'elevenlabs_conversation_id' => 'conv_boris',
+            'phone' => '+380501234567',
+            'status' => 'done',
+            'summary' => 'Boris call',
+        ]);
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('call-center.index', ['phone' => '+1 555 123-4567']))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->component('CallCenter/Index')
+                ->has('calls.data', 1)
+                ->where('calls.data.0.id', $adaCall->id)
+                ->where('filters.phone', '+15551234567')
+                ->where('filters.label', 'Ada · +1 555 123-4567')
+            );
+
+        $this->actingAs(User::factory()->create())
+            ->get(route('call-center.index', ['q' => 'Boris']))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('calls.data', 1)
+                ->where('calls.data.0.contact_name', 'Boris')
+                ->where('filters.q', 'Boris')
+            );
+
+        $this->actingAs(User::factory()->create())
+            ->getJson(route('call-center.contacts', ['q' => '555']))
+            ->assertOk()
+            ->assertJsonCount(1, 'contacts')
+            ->assertJsonPath('contacts.0.name', 'Ada')
+            ->assertJsonPath('contacts.0.phone_normalized', '+15551234567');
     }
 }

@@ -327,7 +327,8 @@ Current Laravel path after the call:
 2. Ignore non-`post_call_transcription` events (including `post_call_audio`) with HTTP 200.
 3. Idempotent upsert on `elevenlabs_conversation_id`.
 4. Store call metadata, transcript turns, and vendor summary when present.
-5. If `metadata.main_language` is en/ru/uk, update `voice_calls.language` and `voice_contacts.preferred_language`.
+5. Resolve conversation language via `VoiceConversationLanguageResolver` (transcript first; `metadata.main_language` only as en/ru/uk fallback).
+6. If resolved language is en/ru/uk, update `voice_calls.language` and `voice_contacts.preferred_language`. Null/unknown does not overwrite a known preference.
 6. Increment `calls_count` once per unique conversation.
 
 `recording_url` is stored only if the payload actually contains an `http(s)` URL. The documented transcription webhook does not. This repo does not download audio.
@@ -423,6 +424,8 @@ Voice Assistant
 - status
 - brief (ElevenLabs summary, else transcript preview)
 - contact card + dialogue transcript in a sheet
+- search with typeahead over existing `voice_contacts` (name / phone)
+- “show all calls from this number” applies the phone filter on the same table
 
 Not shown yet (no fake data): YFS participant/customer, package, show, Bitrix contact.
 

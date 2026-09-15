@@ -5,7 +5,7 @@ namespace App\Services\Voice\Calls;
 use App\Models\VoiceCall;
 use App\Models\VoiceContact;
 use App\Services\Voice\Contacts\VoiceContactDirectory;
-use App\Support\VoiceSupportedLanguage;
+use App\Services\Voice\Language\VoiceConversationLanguageResolver;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -14,6 +14,7 @@ class ElevenLabsPostCallPersister
     public function __construct(
         private readonly VoiceContactDirectory $directory,
         private readonly VoiceTranscriptNormalizer $transcripts,
+        private readonly VoiceConversationLanguageResolver $languages,
     ) {}
 
     /**
@@ -33,9 +34,6 @@ class ElevenLabsPostCallPersister
         $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
         $phoneCall = is_array($metadata['phone_call'] ?? null) ? $metadata['phone_call'] : [];
         $analysis = is_array($data['analysis'] ?? null) ? $data['analysis'] : [];
-        $initiation = is_array($data['conversation_initiation_client_data'] ?? null)
-            ? $data['conversation_initiation_client_data']
-            : [];
 
         $phone = $this->nullableString($phoneCall['external_number'] ?? null);
         $callSid = $this->nullableString($phoneCall['call_sid'] ?? null);
@@ -48,13 +46,13 @@ class ElevenLabsPostCallPersister
             ? $startedAt->copy()->addSeconds($duration)
             : null;
 
-        $detectedLanguage = VoiceSupportedLanguage::tryNormalize(
-            $this->nullableString($metadata['main_language'] ?? null)
-            ?? $this->nullableString(data_get($initiation, 'conversation_config_override.agent.language')),
-        );
-
         $summary = $this->nullableString($analysis['transcript_summary'] ?? null);
         $transcript = $this->transcripts->normalize($data['transcript'] ?? null);
+        $detectedLanguage = $this->languages->resolve(
+            $data['transcript'] ?? null,
+            $transcript,
+            $this->nullableString($metadata['main_language'] ?? null),
+        );
         $recordingUrl = $this->extractRecordingUrl($data, $metadata);
         $safeMetadata = $this->safeMetadata($payload, $data, $metadata, $phoneCall, $analysis);
 
