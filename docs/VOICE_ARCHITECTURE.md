@@ -17,9 +17,9 @@ Status labels used below:
 
 ---
 
-## 1. Current production realtime architecture
+## 1. Existing Custom LLM production routing (experimental / fallback)
 
-**Current.** Confirmed by a successful inbound telephone call through the production gateway.
+**Experimental / fallback.** Existing production Custom LLM routing is unchanged. A successful inbound telephone call through this gateway was confirmed earlier. Native ElevenLabs Agent + Laravel webhook tools is the **selected Phase 2 architecture** (POC SUCCESS, § 13). The Node Custom LLM runtime is not deleted.
 
 Runtime evidence from `yfs-voice-runtime` logs (no secrets):
 
@@ -88,9 +88,9 @@ Realtime audio and conversation ownership:
 - conversation ownership
 - audio recording (ElevenLabs is the source of telephone conversation audio)
 
-**Current production** still uses the YFS Custom LLM gateway as the agent LLM.
+**Selected Phase 2 architecture (POC SUCCESS):** native ElevenLabs Agent LLM plus Laravel webhook tools. See § 13.
 
-**Target (not production yet):** native ElevenLabs Agent LLM plus Laravel webhook tools. See § 13. The Custom LLM Node runtime is kept as experimental/fallback and must not be removed.
+**Experimental / fallback:** the YFS Custom LLM Node runtime. Existing Custom LLM production routing is unchanged and must not be removed.
 
 ### voice-runtime (`/var/www/yfs-ai/voice-runtime`) — **Current**
 
@@ -123,7 +123,7 @@ nginx: `/voice-engine/` → that process (Laravel `location /` unchanged)
 - Voice Prompt Orchestrator (GLOBAL / SESSION / TOPIC)
 - filler phrase registry
 - internal turn: `POST /api/internal/voice/session/turn`
-- **Experimental PoC (native ElevenLabs):** `POST /api/voice/tools/test-context` — dedicated Bearer `ELEVENLABS_TOOL_TOKEN`, independent of voice-runtime. Synthetic test JSON only. Not YFS Core / Bitrix.
+- **Selected Phase 2 path (POC SUCCESS, smoke-test):** `POST /api/voice/tools/test-context` — dedicated Bearer `ELEVENLABS_TOOL_TOKEN`, independent of voice-runtime. Synthetic test JSON only. Not YFS Core / Bitrix.
 
 **Planned:**
 
@@ -334,15 +334,15 @@ It is **experimental / legacy infrastructure**, not production routing. It is sk
 | OpenAI Realtime as the voice layer | Not selected for Phase 2. |
 | Stacked speech: ElevenLabs STT/TTS + OpenAI Realtime speech | Not selected. |
 
-**Current production realtime (until native path is proven):**
-
-ElevenLabs voice layer + YFS Custom LLM + Gemini.
-
-**Target realtime (experimental PoC in § 13):**
+**Selected Phase 2 realtime (POC SUCCESS, § 13):**
 
 Twilio → ElevenLabs Native Agent (hosted LLM) → Laravel webhook tools.
 
-The previous “native LLM is not the business brain” decision is superseded as the *target*. It is **not** current production. Custom LLM remains the live path and the fallback.
+**Experimental / fallback (existing production routing, unchanged):**
+
+ElevenLabs voice layer + YFS Custom LLM + Gemini.
+
+The previous “native LLM is not the business brain” decision is superseded. Native ElevenLabs Agent + Laravel webhook tools is the chosen Phase 2 architecture. Node Custom LLM remains experimental/fallback and is not deleted.
 
 ---
 
@@ -350,18 +350,31 @@ The previous “native LLM is not the business brain” decision is superseded a
 
 The following are **not** current:
 
-- YFS Core or Bitrix24 Voice tools / real connectors
-- production business tools beyond the test tool
-- production routing through ElevenLabs Native Agent webhook tools (that path is **experimental PoC** only)
+- YFS Core Voice tools (next step: first real read-only YFS Core tool)
+- Bitrix24 Voice tools / connectors (not connected yet)
+- production business tools beyond the Native Agent smoke-test webhook
+- full production cutover of every inbound number onto Native Agent (existing Custom LLM routing is unchanged fallback)
 - post-call persistence / analysis / Telegram for calls
 - Voice admin (Calls / Follow-ups) beyond a Call center placeholder
 - `voice_*` database tables
 
 ---
 
-## 13. Experimental — ElevenLabs Native Agent webhook tools
+## 13. Selected Phase 2 architecture — ElevenLabs Native Agent webhook tools
 
-**Experimental proof-of-concept.** Not production routing. This is the first Laravel surface for the *target* Voice Consultant path before any live cutover off Custom LLM.
+**POC SUCCESS.** Confirmed via ElevenLabs Test Tool and a real voice conversation.
+
+Native ElevenLabs Agent + Laravel webhook tools is the **chosen main architecture for Phase 2**.
+
+```text
+ElevenLabs Native Agent
+  → authenticated webhook tool
+  → YFS AI Laravel
+  → structured JSON
+  → agent voice response
+```
+
+Expanded call path:
 
 ```text
 Twilio
@@ -370,17 +383,21 @@ ElevenLabs Native Agent
   ├─ STT / turn-taking / TTS (ElevenLabs)
   └─ native / hosted ElevenLabs LLM
         ↓
-Webhook Tool
+authenticated webhook tool
 POST /api/voice/tools/test-context
         ↓
-Laravel (synthetic test JSON)
+YFS AI Laravel
+        ↓
+structured JSON
+        ↓
+agent voice response
 ```
 
-Current test tool URL:
+Smoke-test endpoint (kept for integration checks):
 
 `https://ai.youngfashionshow.com/api/voice/tools/test-context`
 
-Auth: `Authorization: Bearer` using `ELEVENLABS_TOOL_TOKEN` only.
+Auth: `Authorization: Bearer` using `ELEVENLABS_TOOL_TOKEN` only. Do not record token values in this file.
 
 Do **not** use `VOICE_RUNTIME_INTERNAL_TOKEN`, `VOICE_LLM_SHARED_SECRET`, Gemini, OpenAI, or ElevenLabs API keys on this endpoint.
 
@@ -394,4 +411,6 @@ This endpoint:
 
 Missing or invalid Bearer → `401` JSON `{"message":"Unauthorized"}`. Empty configured token fails closed (401).
 
-Node Custom LLM (`POST /voice-engine/v1/chat/completions`) stays in place as experimental/fallback. Do not delete it. Do not treat this webhook as a completed Voice Consultant migration.
+Node Custom LLM (`POST /voice-engine/v1/chat/completions`) remains **experimental/fallback** and is not deleted. Existing Custom LLM production routing is unchanged.
+
+Next: first real read-only YFS Core tool. Bitrix is not connected yet. Do not treat the smoke-test webhook as a completed Voice Consultant product.

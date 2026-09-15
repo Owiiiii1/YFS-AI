@@ -40,10 +40,10 @@ YFS AI Laravel backend
 | Subsystem | Transport | Status |
 | --- | --- | --- |
 | Instagram / Facebook Assistant | Meta messaging | Implemented / connected. Do not change this product to add voice. |
-| Voice Assistant | Inbound telephony (Twilio → ElevenLabs voice layer → Custom LLM → Gemini) | Phase 2 in progress. Realtime path **Current** (live inbound call confirmed). Orchestrator / tools / post-call **Planned**. Canonical: `docs/VOICE_ARCHITECTURE.md`. |
+| Voice Assistant | Inbound telephony (Twilio → ElevenLabs Native Agent → Laravel webhook tools) | Phase 2 in progress. Native webhook POC **SUCCESS**. Custom LLM remains experimental/fallback. YFS Core / Bitrix / post-call **Planned**. Canonical: `docs/VOICE_ARCHITECTURE.md`. |
 | Sales Agent | Outbound telephony | Planned. Not specified here. |
 
-Phase 2 production choice is ElevenLabs for realtime voice and Gemini for the business LLM behind YFS Custom LLM. OpenAI Realtime and Gemini Live are not the Voice path. Instagram messages and voice transcripts stay in separate modules.
+Phase 2 selected architecture is ElevenLabs Native Agent plus Laravel webhook tools (POC SUCCESS). Node Custom LLM is experimental/fallback and is not deleted. OpenAI Realtime and Gemini Live are not the Voice path. Instagram messages and voice transcripts stay in separate modules.
 
 ## Application modules that exist today
 
@@ -77,7 +77,19 @@ This flow is present in code and is the live messaging product. Voice calls will
 
 Canonical architecture: `docs/VOICE_ARCHITECTURE.md`. Product/roadmap: `docs/VOICE_ASSISTANT.md`.
 
-**Current** (confirmed by a real inbound phone call):
+**Selected Phase 2 architecture (POC SUCCESS):**
+
+```text
+ElevenLabs Native Agent
+  → authenticated webhook tool
+  → YFS AI Laravel
+  → structured JSON
+  → agent voice response
+```
+
+Smoke-test: `POST /api/voice/tools/test-context` (Bearer `ELEVENLABS_TOOL_TOKEN`). Confirmed via ElevenLabs Test Tool and a real voice conversation.
+
+**Experimental / fallback** (existing Custom LLM production routing, unchanged):
 
 ```text
 Twilio
@@ -95,7 +107,7 @@ Public namespace: `/voice-engine/` → `127.0.0.1:3101`.
 Incoming model label: `yfs-bot-runtime`. Actual provider/model come from Laravel `bot_runtime`.  
 Laravel `location /` is unchanged. Twilio routing is not owned by YFS.
 
-**Planned:** Voice Orchestrator, YFS Core / Bitrix tools, post-call `voice_*` persistence. Not implemented.
+**Planned:** first real read-only YFS Core Voice tool, then Bitrix (not connected yet), post-call `voice_*` persistence. Not implemented.
 
 Speech Engine WebSocket is experimental / legacy, not production routing.
 

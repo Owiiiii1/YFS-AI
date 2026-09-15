@@ -2,61 +2,64 @@
 
 ## Task
 
-Add a dedicated Laravel webhook tool endpoint for ElevenLabs Native Agent. Keep Node Custom LLM as experimental/fallback. No YFS Core / Bitrix. No voice-runtime changes.
+Close the ElevenLabs Native Agent → Laravel webhook tool POC. Remove temporary diagnostic logging. Keep the smoke-test endpoint. Document Native Agent + Laravel webhook tools as the selected Phase 2 architecture.
 
 ## Status
 
-Implemented and covered by Laravel tests. Endpoint is fail-closed until `ELEVENLABS_TOOL_TOKEN` is set in production `.env`.
+Done.
 
-This is a proof-of-concept surface, not a live cutover off Custom LLM.
+Native ElevenLabs webhook POC = **SUCCESS**.
 
-## Commit
+Confirmed:
 
-`d692dfa` on `main`
+- ElevenLabs Test Tool
+- real voice conversation: Native Agent called `POST /api/voice/tools/test-context` with Bearer auth, received Laravel JSON, used it in the voice response
 
-Add ElevenLabs Native Agent webhook test endpoint.
+Temporary `elevenlabs_tool_auth_debug` logging was removed from the working tree. Committed `AuthenticateElevenLabsTool` auth logic was already clean and is unchanged.
 
-## Files changed
+`POST /api/voice/tools/test-context` kept as an integration smoke-test.
 
-- `app/Http/Controllers/Api/ElevenLabsTestContextController.php`
-- `app/Http/Middleware/AuthenticateElevenLabsTool.php`
-- `routes/api.php`
-- `config/services.php`
-- `.env.example` (`ELEVENLABS_TOOL_TOKEN=` placeholder only)
-- `tests/Feature/ElevenLabsWebhookToolTest.php`
-- `docs/VOICE_ARCHITECTURE.md`
-- this report
-
-Not changed: `POST /api/internal/voice/tools/execute`, Node `voice-runtime`.
+`ELEVENLABS_TOOL_TOKEN` was not rotated in this step.
 
 ## Architecture
 
-Experimental target path:
+Selected Phase 2 path:
 
-Twilio → ElevenLabs Native Agent (hosted LLM) → `POST /api/voice/tools/test-context` → Laravel synthetic JSON.
+```text
+ElevenLabs Native Agent
+  → authenticated webhook tool
+  → YFS AI Laravel
+  → structured JSON
+  → agent voice response
+```
 
-Auth: Bearer `ELEVENLABS_TOOL_TOKEN` only. Not `VOICE_RUNTIME_INTERNAL_TOKEN`, not Custom LLM / provider keys.
+Node Custom LLM runtime remains experimental/fallback and is not deleted.
 
-Current production realtime remains Custom LLM + Gemini until a later cutover.
+Existing production Custom LLM routing, voice-runtime, Instagram/Facebook, YFS Core, Bitrix, nginx, and Twilio routing were not changed.
+
+## Files changed
+
+- `docs/VOICE_ARCHITECTURE.md`
+- `docs/VOICE_ASSISTANT.md`
+- `docs/ARCHITECTURE.md`
+- `docs/PROJECT.md`
+- `docs/EXTERNAL_SERVICES.md`
+- this report
+
+Not changed: `voice-runtime`, Custom LLM, Instagram/Facebook, YFS Core, Bitrix, nginx, `POST /api/internal/voice/tools/execute`.
+
+No secret or token values were written to Git, docs, tests, or logs.
 
 ## Tests
 
 `php artisan test --filter ElevenLabsWebhookToolTest`: 4 passed.
 
-`php artisan test --filter Voice`: 19 passed, 7 skipped (sqlite-gated / unrelated).
-
-## Runtime verification
-
-Laravel route cache rebuilt. No systemd restart required for this Laravel-only endpoint. PHP-FPM / Laravel will serve the new route after route cache.
-
-Set `ELEVENLABS_TOOL_TOKEN` in production `.env` before configuring the ElevenLabs webhook tool.
-
-## Known limitations
-
-- Synthetic test payload only.
-- Native Agent path is experimental PoC, not production routing.
-- Empty token always returns 401.
+`php artisan test --filter 'ElevenLabsWebhookToolTest|Voice'`: 22 passed, 7 skipped (sqlite-gated / unrelated).
 
 ## Next recommended step
 
-Set `ELEVENLABS_TOOL_TOKEN`, point an ElevenLabs Native Agent webhook tool at `https://ai.youngfashionshow.com/api/voice/tools/test-context`, and prove a live tool call without Custom LLM.
+First real read-only YFS Core tool for Native Agent.
+
+Do not connect Bitrix yet.
+
+Rotate `ELEVENLABS_TOOL_TOKEN` manually after this step if still needed.

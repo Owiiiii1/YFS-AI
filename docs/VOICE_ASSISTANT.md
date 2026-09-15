@@ -5,9 +5,11 @@ Status: **PHASE 2 — IN PROGRESS**
 Canonical Voice architecture: **`docs/VOICE_ARCHITECTURE.md`**.  
 This file is the product spec: goals, roadmap, planned data, conversation/handoff/admin intent.
 
-Realtime production path is confirmed by a successful inbound telephone call:
+Realtime production path is confirmed by a successful inbound telephone call.
 
-ElevenLabs voice layer + YFS Custom LLM gateway + Gemini.
+**Selected Phase 2 architecture (POC SUCCESS):** ElevenLabs Native Agent → authenticated Laravel webhook tools → structured JSON → agent voice response.
+
+**Experimental / fallback:** ElevenLabs voice layer + YFS Custom LLM gateway + Gemini. Existing Custom LLM routing is unchanged and is not deleted.
 
 Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). YFS Core / Bitrix tools, post-call pipeline, and Voice admin remain **Planned**.
 
@@ -29,20 +31,26 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Realtime path **Current**. Tool calling **Current** (live). Session context / Prompt Orchestrator / filler **Current** (code; live fast-path/filler proof after restart). YFS Core / Bitrix / post-call / admin **Planned**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. YFS Core / Bitrix / post-call / admin **Planned**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
-**Current (see `docs/VOICE_ARCHITECTURE.md`):**
+**Selected Phase 2 (POC SUCCESS, see `docs/VOICE_ARCHITECTURE.md` § 13):**
 
 - Twilio phone transport into ElevenLabs (not first-party YFS Twilio)
-- ElevenLabs Voice Agent: STT, turn-taking, interruptions, language/voices, TTS, conversation + audio ownership
+- ElevenLabs Native Agent: STT, turn-taking, interruptions, language/voices, TTS, hosted LLM, conversation + audio ownership
+- Authenticated Laravel webhook tools: `POST /api/voice/tools/test-context` (smoke-test; synthetic JSON)
+- Confirmed via ElevenLabs Test Tool and a real voice conversation
+
+**Experimental / fallback (existing Custom LLM routing, unchanged):**
+
 - Custom LLM: `POST /voice-engine/v1/chat/completions`
 - Laravel `bot_runtime`: **gemini** / **gemini-3.8-flash**
 - Incoming ElevenLabs model label: `yfs-bot-runtime`
 
 **Planned (not implemented):**
 
-- YFS Core / Bitrix24 Voice tools
+- first real read-only YFS Core Voice tool
+- Bitrix24 Voice tools (not connected yet)
 - production business tools
 - post-call `voice_calls` persistence, audio archive, transcript, analysis, Telegram
 - live transfer / callback workflows in Laravel
@@ -72,7 +80,7 @@ Voice Assistant must:
 13. Decide whether an operator action is required.
 14. Show the call and follow-up in the YFS AI admin.
 
-Realtime items 1–2 are **Current** at the voice-layer level (ElevenLabs + Custom LLM + Gemini). Item 5 is **Current** only for the test tool `get_current_yfs_test_context` (live phone proof **Unverified**). Items 6–14 are **Planned** unless noted in `docs/VOICE_ARCHITECTURE.md`.
+Realtime items 1–2 are **Current** at the voice-layer level. Native Agent webhook tool calling is **Current** for the smoke-test endpoint (POC SUCCESS). Item 5 next step is the first real read-only YFS Core tool. Items 6–14 are **Planned** unless noted in `docs/VOICE_ARCHITECTURE.md`.
 
 It is **not** an outbound sales caller. That is Phase 3.
 

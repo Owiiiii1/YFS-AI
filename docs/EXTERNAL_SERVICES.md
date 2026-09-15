@@ -97,7 +97,7 @@ Gemini is the text/reasoning model behind ElevenLabs Custom LLM. Gemini Live API
 YFS Node Voice Runtime: `/var/www/yfs-ai/voice-runtime`.  
 Listen: `127.0.0.1:3101`. Isolated from Laravel php-fpm.
 
-**Current** role: OpenAI Chat Completions-compatible **Custom LLM gateway** for the ElevenLabs Voice Agent. Live inbound phone calls through this gateway are confirmed. LLM routing follows Laravel `bot_runtime` (Gemini in production).
+**Experimental / fallback** role: OpenAI Chat Completions-compatible **Custom LLM gateway** for the ElevenLabs Voice Agent. Existing production routing is unchanged. LLM routing follows Laravel `bot_runtime` (Gemini). The selected Phase 2 path is Native Agent webhook tools, not this gateway.
 
 | Endpoint | URL |
 | --- | --- |
@@ -122,10 +122,11 @@ Details: `docs/VOICE_ARCHITECTURE.md`. Do not write account IDs, tokens, or API 
 | Service | Role | Status |
 | --- | --- | --- |
 | Twilio | Phone transport into ElevenLabs. Outbound is Phase 3. | **Current** on the ElevenLabs side. Not a first-party YFS Twilio stack. Do not change from this project. |
-| ElevenLabs Voice Agent | Realtime voice: telephony, STT, turn-taking, interruptions, languages/voices, TTS, conversation + audio ownership. Languages (EN / RU / UK with voice overrides) stay on the ElevenLabs side. | **Current**. LLM is YFS Custom LLM, not ElevenLabs hosted LLM. |
-| YFS Custom LLM / Gemini | Business brain (text). | **Current**. Live call confirmed. |
+| ElevenLabs Voice Agent | Realtime voice: telephony, STT, turn-taking, interruptions, languages/voices, TTS, conversation + audio ownership. Native Agent hosted LLM plus Laravel webhook tools is the selected Phase 2 path. Languages (EN / RU / UK with voice overrides) stay on the ElevenLabs side. | **Current**. Native webhook POC SUCCESS. Custom LLM remains experimental/fallback. |
+| Native Agent Laravel webhook tools | Authenticated `POST /api/voice/tools/test-context` smoke-test. Structured JSON back to the agent voice response. | **Current (POC SUCCESS)**. Confirmed via ElevenLabs Test Tool and a real voice conversation. Not YFS Core / Bitrix. |
+| YFS Custom LLM / Gemini | Experimental/fallback business brain (text) behind Custom LLM. | **Experimental / fallback**. Existing routing unchanged. Not deleted. |
 | ElevenLabs Speech Engine | Experimental / legacy low-level realtime path. | Not production routing. Code kept, not activated. |
-| Voice Orchestrator / YFS Core / Bitrix tools | Laravel tool layer. | **Planned**. Not implemented. |
+| Voice Orchestrator / YFS Core / Bitrix tools | Laravel tool layer. | Next: first real read-only YFS Core tool. Bitrix not connected. |
 | Post-call audio / transcript / analysis | Persist `voice_*`, archive audio, Telegram. | **Planned**. Not implemented. |
 | OpenAI Realtime / Gemini Live | Full realtime voice APIs. | **Rejected for Phase 2**. |
 
