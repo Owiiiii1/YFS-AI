@@ -125,11 +125,12 @@ nginx: `/voice-engine/` → that process (Laravel `location /` unchanged)
 - filler phrase registry
 - internal turn: `POST /api/internal/voice/session/turn`
 - **Selected Phase 2 path (POC SUCCESS, smoke-test):** `POST /api/voice/tools/test-context` — dedicated Bearer `ELEVENLABS_TOOL_TOKEN`, independent of voice-runtime. Synthetic test JSON only. Not YFS Core / Bitrix.
-- Voice Assistant bot settings (Call Center → Bot settings): admin-editable sections in `voice_assistant_settings`, filled from `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`. **Not** sent to ElevenLabs yet.
+- Voice Assistant bot settings (Call Center → Bot settings): admin-editable sections in `voice_assistant_settings`, filled from `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`.
+- Native Agent runtime prompt contract: `POST /api/voice/context` — `VoiceAssistantPromptBuilder` assembles enabled sections. Same Bearer `ELEVENLABS_TOOL_TOKEN`. Not yet applied to ElevenLabs conversation initiation.
 
 **Planned:**
 
-- runtime Prompt Builder: admin settings → Laravel → ElevenLabs conversation context
+- wire `/api/voice/context` into ElevenLabs Conversation Initiation / dynamic variables / overrides (no ElevenLabs API config change in this step)
 - YFS Core / Bitrix24 Voice tools and real connectors
 - production business tools
 - persistence and post-call workflows
@@ -358,7 +359,8 @@ The following are **not** current:
 - production business tools beyond the Native Agent smoke-test webhook
 - full production cutover of every inbound number onto Native Agent (existing Custom LLM routing is unchanged fallback)
 - post-call persistence / analysis / Telegram for calls
-- Voice admin Calls / Follow-ups (Call Center Bot settings exist; they are not runtime prompt injection)
+- Voice admin Calls / Follow-ups
+- ElevenLabs conversation initiation wired to `/api/voice/context` (backend contract exists; agent config is unchanged)
 - `voice_calls` / other post-call `voice_*` tables (`voice_assistant_settings` exists)
 
 ---
@@ -414,6 +416,44 @@ This endpoint:
 
 Missing or invalid Bearer → `401` JSON `{"message":"Unauthorized"}`. Empty configured token fails closed (401).
 
+## 14. Native Agent conversation context contract
+
+**Current (backend only).** ElevenLabs agent configuration is **not** changed automatically in this step.
+
+```text
+Admin
+  ↓
+voice_assistant_settings
+  ↓
+VoiceAssistantPromptBuilder
+  ↓
+authenticated POST /api/voice/context
+  ↓
+ElevenLabs conversation initialization
+```
+
+URL:
+
+`https://ai.youngfashionshow.com/api/voice/context`
+
+Auth: `Authorization: Bearer` using `ELEVENLABS_TOOL_TOKEN` only. Same middleware as the smoke-test tool. Do not record token values.
+
+JSON:
+
+```json
+{
+  "prompt": "...assembled prompt...",
+  "version": "v1-<sha256>",
+  "generated_at": "<ISO-8601 UTC>"
+}
+```
+
+- `prompt` = small immutable system wrapper + enabled `voice_assistant_settings` in `sort_order`, each under its title heading. Disabled sections are omitted. Section bodies are not rewritten.
+- `version` is a deterministic hash of wrapper version + enabled section key/title/instructions/sort_order. Same settings → same version. Editing instructions changes version.
+- `generated_at` is request time and is not part of `version`.
+
+This contract is ready for a later ElevenLabs Conversation Initiation / dynamic variables / overrides hookup. Do not treat it as a live prompt override on the production agent yet.
+
 Node Custom LLM (`POST /voice-engine/v1/chat/completions`) remains **experimental/fallback** and is not deleted. Existing Custom LLM production routing is unchanged.
 
-Next: first real read-only YFS Core tool. Bitrix is not connected yet. Do not treat the smoke-test webhook as a completed Voice Consultant product.
+Next: connect this endpoint to ElevenLabs conversation initialization. Then the first real read-only YFS Core tool. Bitrix is not connected yet.

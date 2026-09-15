@@ -2,96 +2,108 @@
 
 ## Task
 
-Add admin-editable Voice Assistant behaviour settings from the client Customer Support instruction. Keep the source document verbatim. Do not wire settings into ElevenLabs, YFS Core, Bitrix, Twilio, voice-runtime, or Instagram/Facebook.
+Connect Call Center → Bot settings to a Laravel runtime prompt contract for ElevenLabs Native Agent. Build `VoiceAssistantPromptBuilder` and authenticated `POST /api/voice/context`. Do not change ElevenLabs agent config, YFS Core, Bitrix, Twilio, Instagram/Facebook, voice-runtime, or Custom LLM.
 
 ## Status
 
 Done.
 
-Call Center now has a second item next to Voice Assistant: Bot settings. Settings are stored in `voice_assistant_settings` and filled from the client policy without inventing operational facts (rehearsal times, parking, ticket counts, etc.).
-
-These settings are not injected into the ElevenLabs Native Agent. Runtime Prompt Builder is a later step.
+Enabled `voice_assistant_settings` are assembled into a structured prompt. The Native Agent can fetch it from `POST /api/voice/context` with the existing `ELEVENLABS_TOOL_TOKEN` Bearer auth. ElevenLabs conversation initiation is not wired yet.
 
 ## Commit
 
-`ab92a22` on `main`
+See git history on `main` after push.
 
-Add editable Voice Assistant bot settings from the client support policy.
+## Architecture
+
+```text
+Admin
+  ↓
+voice_assistant_settings
+  ↓
+VoiceAssistantPromptBuilder
+  ↓
+authenticated POST /api/voice/context
+  ↓
+ElevenLabs conversation initialization
+```
+
+This step delivers the backend contract only. ElevenLabs is not updated via API. Node Custom LLM remains experimental/fallback and is not deleted.
+
+## Endpoint contract
+
+`POST /api/voice/context`
+
+Auth: `Authorization: Bearer` using `ELEVENLABS_TOOL_TOKEN` (same `AuthenticateElevenLabsTool` as the smoke-test). Empty token fails closed (401). Voice-runtime token is rejected.
+
+JSON:
+
+```json
+{
+  "prompt": "...assembled prompt...",
+  "version": "v1-<sha256>",
+  "generated_at": "<ISO-8601 UTC>"
+}
+```
+
+- `prompt`: immutable system wrapper + enabled sections in `sort_order`, each under `## {title}`. Disabled sections omitted. Section bodies not rewritten. No invented business facts.
+- `version`: deterministic hash of wrapper version + enabled key/title/instructions/sort_order. Same settings → same version. Instruction edits change version. `generated_at` is not part of the hash.
+- No secrets, tokens, or extra fields.
+
+Smoke-test `POST /api/voice/tools/test-context` is unchanged.
 
 ## Files changed
 
-- `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md` (verbatim source document)
-- `docs/ref/Nuovo documento di testo.TXT` (original drop; unchanged)
-- `app/Models/VoiceAssistantSetting.php`
-- `app/Support/VoiceAssistantSettingCatalog.php`
-- `app/Http/Controllers/CallCenter/VoiceBotSettingsController.php`
-- `database/migrations/2026_09_15_120000_create_voice_assistant_settings_table.php`
-- `database/seeders/VoiceAssistantSettingsSeeder.php`
-- `database/seeders/DatabaseSeeder.php`
-- `resources/js/Pages/CallCenter/BotSettings.jsx`
-- `resources/js/Layouts/AdminLayout.jsx`
-- `routes/owl-admin-pages.php`
-- `app/Http/Middleware/HandleInertiaRequests.php`
-- `tests/Feature/VoiceBotSettingsTest.php`
-- `tests/Unit/VoiceAssistantSettingCatalogTest.php`
+- `app/Services/Voice/Prompt/VoiceAssistantPromptBuilder.php`
+- `app/Services/Voice/Prompt/VoiceAssistantRuntimePrompt.php`
+- `app/Http/Controllers/Api/VoiceContextController.php`
+- `routes/api.php`
+- `tests/Unit/Voice/VoiceAssistantPromptBuilderTest.php`
+- `tests/Feature/VoiceContextEndpointTest.php`
+- `tests/Feature/VoiceContextEndpointDatabaseTest.php`
 - `docs/VOICE_ARCHITECTURE.md`
 - `docs/VOICE_ASSISTANT.md`
 - `docs/ARCHITECTURE.md`
 - `docs/DATABASE.md`
+- `docs/EXTERNAL_SERVICES.md`
 - this report
-
-Not changed: `voice-runtime`, Custom LLM, Instagram/Facebook, YFS Core, Bitrix, nginx, Twilio, ElevenLabs agent config, `POST /api/voice/tools/test-context`.
-
-Existing Call Center Voice Assistant page is unchanged.
-
-## Architecture
-
-Admin-only for now:
-
-```text
-Call center
-├── Voice assistant     placeholder (unchanged)
-└── Bot settings        editable policy sections
-```
-
-Storage: `voice_assistant_settings` (`key`, `title`, `instructions`, `enabled`, `sort_order`).
-
-Source of truth for behaviour: `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`.
-
-Next (not this change): admin settings → Laravel Prompt Builder → ElevenLabs conversation context.
-
-## Behaviour captured
-
-- Inquiry categories and approximate shares from the client analysis.
-- Self-service / App as the primary source of organizational information.
-- BASIC: Self-Service First. App / Help Center → Customer Support request → callback if needed.
-- PREMIUM: Self-Service + Customer Support. Phone for complex, urgent, or non-standard cases.
-- VIP: Priority Personal Support. Direct phone + personal accompaniment.
-- SALE → CONTRACT → CUSTOMER SUPPORT.
-- CUSTOMER SUPPORT → SALES only for a new commercial opportunity (upgrade, extra service, workshop, option, next show, other purchase).
-- Escalation follows package model. Organizational questions after contract do not go to Sales.
-
-No invented show facts (times, addresses, ticket counts, brands).
 
 ## Tests
 
-`php artisan test --filter VoiceAssistantSettingCatalogTest`: 1 passed.
+`php artisan test --filter VoiceAssistantPromptBuilderTest`: 3 passed (enabled/sort, no rewrite, stable vs changed version).
 
-`php artisan test --filter VoiceBotSettingsTest`: skipped on this host (no `pdo_sqlite`; same gate as other RefreshDatabase feature tests). Tests cover guest 401/redirect to login, admin page load of 13 sections, save + persistence, unknown key 404, and unchanged `call-center.index`.
+`php artisan test --filter VoiceContextEndpointTest`: 5 passed (auth required, wrong token, voice-runtime token rejected, empty token fail-closed, test-context unchanged).
+
+`php artisan test --filter VoiceContextEndpointDatabaseTest`: skipped on this host (no `pdo_sqlite`). Covers valid token JSON shape, no secrets, disabled omitted, sort_order, instruction change vs identical version.
 
 `php artisan test --filter ElevenLabsWebhookToolTest`: 4 passed.
 
-Guest `GET /call-center/bot-settings` redirects to `/login`.
+Guest `POST /api/voice/context` on production returns `401 {"message":"Unauthorized"}`.
 
-## Runtime
+## Production actions
 
-- Migration applied.
-- `VoiceAssistantSettingsSeeder` / `ensureDefaults()` inserted 13 sections.
 - Laravel route cache rebuilt.
-- Frontend production assets rebuilt (`npm run build`). PHP-FPM serves the new Inertia page. No nginx / voice-runtime / ElevenLabs change.
+- No migration (existing `voice_assistant_settings`).
+- No nginx change.
+- No secret/token rotation.
+- ElevenLabs agent configuration not changed.
+- Local builder run confirmed enabled General rules and VIP policy text are present in the assembled prompt.
+
+## What was not changed
+
+- YFS Core
+- Bitrix
+- Twilio routing
+- Instagram/Facebook
+- Node `voice-runtime`
+- Custom LLM
+- `POST /api/voice/tools/test-context`
+- production ElevenLabs agent configuration
+- nginx
+- secrets
 
 ## Next recommended step
 
-Runtime Prompt Builder: enabled admin sections → Laravel → ElevenLabs conversation context.
+Wire `POST /api/voice/context` into ElevenLabs Conversation Initiation / dynamic variables / overrides so a new conversation uses the assembled admin prompt without manually editing the ElevenLabs business prompt.
 
 Do not connect YFS Core or Bitrix in that step unless explicitly requested.

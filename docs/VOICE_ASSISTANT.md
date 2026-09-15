@@ -11,7 +11,7 @@ Realtime production path is confirmed by a successful inbound telephone call.
 
 **Experimental / fallback:** ElevenLabs voice layer + YFS Custom LLM gateway + Gemini. Existing Custom LLM routing is unchanged and is not deleted.
 
-Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center now has admin-editable Voice Assistant bot settings based on the client Customer Support policy. Those settings are **not** wired into ElevenLabs yet. YFS Core / Bitrix tools, post-call pipeline, and Calls / Follow-ups remain **Planned**.
+Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center has admin-editable Voice Assistant bot settings. `POST /api/voice/context` exposes the assembled prompt to ElevenLabs Native Agent auth; it is **not** yet wired into ElevenLabs conversation initiation. YFS Core / Bitrix tools, post-call pipeline, and Calls / Follow-ups remain **Planned**.
 
 Related documents:
 
@@ -32,7 +32,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings **Current** (not sent to ElevenLabs yet). YFS Core / Bitrix / post-call / Calls admin **Planned**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + `/api/voice/context` Prompt Builder **Current** (not applied to ElevenLabs conversation init yet). YFS Core / Bitrix / post-call / Calls admin **Planned**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
 **Selected Phase 2 (POC SUCCESS, see `docs/VOICE_ARCHITECTURE.md` § 13):**
@@ -431,7 +431,23 @@ Call center
 └── Bot settings        editable Voice Assistant behaviour
 ```
 
-Voice Assistant behaviour settings are stored in `voice_assistant_settings` and must be based on `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`. They are not pushed to ElevenLabs in this step. A later Prompt Builder will assemble admin settings → Laravel → ElevenLabs conversation context.
+Voice Assistant behaviour settings are stored in `voice_assistant_settings` and must be based on `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md`.
+
+Runtime contract:
+
+```text
+Admin
+  ↓
+voice_assistant_settings
+  ↓
+VoiceAssistantPromptBuilder
+  ↓
+authenticated POST /api/voice/context
+  ↓
+ElevenLabs conversation initialization
+```
+
+ElevenLabs agent configuration is not updated via API in this step. The next step is to attach this contract to Conversation Initiation / dynamic variables / overrides.
 
 Still **Planned** (not built):
 
