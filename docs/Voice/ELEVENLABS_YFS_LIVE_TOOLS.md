@@ -197,6 +197,19 @@ Do not add an LLM `phone` parameter. `system__caller_id` and `system__conversati
 
 ---
 
+## Tools 4–5 — extended identity search
+
+Paste JSON from `docs/Voice/EXTENDED_IDENTITY_SEARCH.md`. Dashboard is not changed from this repo.
+
+| Tool | URL | `response_timeout_secs` | `pre_tool_speech` |
+| --- | --- | --- | --- |
+| `start_extended_identity_search` | `https://ai.youngfashionshow.com/api/voice/tools/start-extended-identity-search` | `10` | `auto` |
+| `get_extended_identity_search_status` | `https://ai.youngfashionshow.com/api/voice/tools/extended-identity-search-status` | `8` | `off` |
+
+Reuse the same Authorization secret. Do not return candidates, phones, emails, or CRM payloads.
+
+---
+
 ## What not to configure
 
 - Do not point ElevenLabs at the JFS database.

@@ -27,7 +27,7 @@ final class VoiceConversationInitiationService
     public function payload(?string $callerId, ?string $conversationId = null): array
     {
         $contact = $this->directory->findOrCreateFromCallerId($callerId);
-        $identity = $this->resolver->resolveByPhone($callerId);
+        $identity = $this->resolver->resolveByPhoneFast($callerId);
 
         if ($contact !== null) {
             $this->identityStore->remember($contact, $identity);

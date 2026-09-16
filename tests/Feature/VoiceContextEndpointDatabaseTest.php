@@ -52,7 +52,8 @@ class VoiceContextEndpointDatabaseTest extends TestCase
         $this->assertStringContainsString('get_show_brands', $payload['prompt']);
         $this->assertStringContainsString('E. CALLER IDENTITY', $payload['prompt']);
         $this->assertStringContainsString('resolve_customer_identity', $payload['prompt']);
-        $this->assertMatchesRegularExpression('/^v5-[a-f0-9]{64}$/', $payload['version']);
+        $this->assertStringContainsString('start_extended_identity_search', $payload['prompt']);
+        $this->assertMatchesRegularExpression('/^v6-[a-f0-9]{64}$/', $payload['version']);
         $this->assertNotFalse(strtotime($payload['generated_at']));
     }
 

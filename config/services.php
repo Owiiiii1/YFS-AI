@@ -78,6 +78,14 @@ return [
         'filler_enabled' => env('VOICE_FILLER_ENABLED', true),
     ],
 
+    'bitrix' => [
+        'webhook_url' => env('BITRIX_REST_WEBHOOK_URL'),
+        'timeout_seconds' => (int) env('BITRIX_REST_TIMEOUT_SECONDS', 3),
+        'fast_budget_ms' => (int) env('BITRIX_IDENTITY_FAST_BUDGET_MS', 1500),
+        'fast_tool_budget_ms' => (int) env('BITRIX_IDENTITY_FAST_TOOL_BUDGET_MS', 4000),
+        'max_fast_contacts' => (int) env('BITRIX_IDENTITY_MAX_FAST_CONTACTS', 3),
+    ],
+
     'young_fashion_show' => [
         'incoming_api_token' => env('INCOMING_API_TOKEN'),
         'sso_verify_endpoint' => env(

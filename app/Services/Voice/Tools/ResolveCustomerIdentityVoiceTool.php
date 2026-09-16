@@ -66,7 +66,7 @@ final class ResolveCustomerIdentityVoiceTool implements VoiceToolInterface, Voic
             return $this->payload(false, 'invalid_request', 'ask_name');
         }
 
-        $result = $this->resolver->resolveBySpokenHints($name, $childName);
+        $result = $this->resolver->resolveBySpokenHintsFast($name, $childName);
         $contact = $this->sessions->findTrusted($callerId !== '' ? $callerId : null, $conversationId !== '' ? $conversationId : null);
 
         if ($result->status === CustomerIdentityResult::SOURCE_UNAVAILABLE) {

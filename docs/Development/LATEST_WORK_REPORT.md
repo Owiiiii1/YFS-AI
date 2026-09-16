@@ -2,131 +2,149 @@
 
 ## Task
 
-Complete the production Voice identity loop: Native Agent webhook tool `resolve_customer_identity` for unknown/ambiguous/other-number callers, bind UNIQUE results to the current `VoiceContact`, and document native ElevenLabs filler / pre-tool speech. Bitrix24 not connected. No JFS writes. No new secrets.
+Store the production Bitrix24 REST webhook outside Git, keep YFS Core as canonical Voice identity, add a read-only Bitrix fallback (exact phone/name → email → YFS), and add asynchronous extended identity search with start/status Native Agent tools. No Bitrix writes. No JFS writes. No new ElevenLabs secret. Dashboard was not changed from this repo.
 
 ## Status
 
-Done. Laravel endpoint is live. ElevenLabs dashboard was **not** changed from this repo; paste JSON from `docs/Voice/CUSTOMER_IDENTITY.md` and filler steps from `docs/Voice/ELEVENLABS_TOOL_FILLER.md`.
+Done on this host. Laravel is live with config cache. Paste new tool JSON from `docs/Voice/EXTENDED_IDENTITY_SEARCH.md`. Existing `resolve_customer_identity` JSON is unchanged unless the dashboard copy is missing system dynamic variables.
 
-## Endpoint
+## Commit hash
 
-`POST https://ai.youngfashionshow.com/api/voice/tools/resolve-customer-identity`
+See the follow-up report commit on `main` for the implementation SHA (recorded immediately after this file is first committed).
 
-Auth: existing `AuthenticateElevenLabsTool` / `ELEVENLABS_TOOL_TOKEN`. Same secret as `get_public_shows` / `get_show_brands`. Do not create a new token.
+## Bitrix connection
 
-## Request / response contract
+- Env key: `BITRIX_REST_WEBHOOK_URL` (not in Git; `.env.example` empty placeholder only)
+- Config: `services.bitrix.webhook_url`
+- `configured=true`
+- `connectivity=true`
+- Scopes: `crm`, `telephony`, `call`, `user`
+- Secret values are not in this report, logs, or ElevenLabs responses
 
-LLM body: `name` and `child_name` (optional strings; at least one required), optional `on_behalf_of` boolean.
+## REST methods actually used
 
-Trusted session fields (ElevenLabs system dynamic variables only; never LLM `phone` / `caller_id`):
+Allowlisted only:
 
-- `system__caller_id`
-- `system__conversation_id`
+- `scope` (connectivity)
+- `crm.duplicate.findbycomm` (`type=PHONE`, CONTACT)
+- `telephony.externalCall.searchCrmEntities` (CONTACT fallback)
+- `crm.contact.list` (`%NAME`, optional `%LAST_NAME`, optional child UF)
+- `crm.contact.get` (`ID`, `EMAIL` only)
 
-Lookup always uses `CustomerIdentityResolver::resolveBySpokenHints()`. Matching logic was not duplicated.
+Not used: `%PHONE`, `FIND`, deals, timeline, activities, companies, leads dump, files, comments, payments, contracts, any add/update.
 
-| Case | `ok` | `status` | `next_action` | Extra |
+## Sanitized latency (production smoke, unused synthetic lookups, no PII)
+
+Bitrix REST:
+
+| Metric | n | min ms | median ms | max ms |
 | --- | --- | --- | --- | --- |
-| Unique | true | `unique` | `identified` | `customer.display_name` only |
-| Unique, existing different identity kept | true | `unique` | `already_identified` | existing `display_name` |
-| Ambiguous, no child | true | `ambiguous` | `ask_child_name` | none |
-| Ambiguous after child | true | `ambiguous` | `ask_additional_identifier` | none |
-| Not found | true | `not_found` | `ask_again_or_continue_without_identity` | none |
-| JFS down | false | `source_unavailable` | `continue_without_identity` | none |
-| Missing name and child | false | `invalid_request` | `ask_name` | none |
-| Bad/missing Bearer | HTTP 401 | — | — | `{"message":"Unauthorized"}` |
+| `bitrix.identity.phone_lookup_ms` | 5 | 481 | 500 | 602 |
+| `bitrix.identity.name_lookup_ms` | 4 | 409 | 675 | 1083 |
+| `bitrix.identity.yfs_link_ms` (JFS email miss) | 3 | 0 | 0 | 10 |
 
-Never in the ElevenLabs JSON: phone, email, internal ids, candidate lists, children lists, payments, CRM dumps, secrets.
+Fast resolver totals (YFS then Bitrix, unused inputs, all `not_found`):
 
-## Binding strategy
+| Path | min ms | median ms | max ms |
+| --- | --- | --- | --- |
+| phone fast (`bitrix.identity.total_ms`) | 504 | 505 | 514 |
+| name fast (`bitrix.identity.total_ms`) | 814 | 841 | 845 |
 
-UNIQUE results persist compact `metadata.yfs_customer` via existing `VoiceCustomerIdentityStore` (`bindUnique`) when a trusted session identifier resolves a `VoiceContact`:
+Fast budgets from these facts: initiation **1500 ms**, spoken tool **4000 ms**. Typical unused phone fallback is ~0.5s. Name fallback is ~0.8–1.1s. Unique Bitrix hits add `crm.contact.get` calls and were not timed against real contacts.
 
-1. `system__conversation_id` → contact that stored that id at initiation
-2. else `system__caller_id` → `VoiceContactDirectory::findOrCreateFromCallerId`
+## Fast resolver flow
 
-Initiation still uses `caller_id`. When ElevenLabs also sends `conversation_id`, it is stored on `voice_contacts.metadata.elevenlabs_conversation_id`. Initiation JSON contract is unchanged.
+```text
+YFS first
+  UNIQUE → YFS identity, Bitrix not called
+  phone AMBIGUOUS → keep YFS ambiguous (Bitrix must not pick)
+  source_unavailable → keep YFS result
+  otherwise Bitrix exact phone or controlled name
+    unique contact → emails inside Laravel → findClientByEmail()
+      UNIQUE YFS → existing CustomerIdentityResult UNIQUE
+      else not a confirmed YFS customer
+```
 
-If no trusted session id is present, lookup still returns status to the agent; persistence is skipped.
+Initiation uses `resolveByPhoneFast()`. `resolve_customer_identity` uses `resolveBySpokenHintsFast()`. Public contract is unchanged.
 
-The calling number is not written to YFS/JFS. `app_users.phone` is never updated.
+## Bitrix → YFS linkage
 
-Ambiguous / not_found do not bind and do not create a fake unique identity. `source_unavailable` does not destroy an existing unique identity.
+Email only, server-side. Never returned to ElevenLabs. Several emails must collapse to one YFS client or the result is ambiguous. A Bitrix contact without a unique YFS email match is not authenticated identity.
 
-## Identity override safety
+`BitrixYfsLinker` is bound in `AppServiceProvider` so the container actually injects it (nullable constructor defaults were skipping autowire).
 
-- Initiation UNIQUE identity is current for this caller.
-- Spoken resolution is for unknown / ambiguous / other-number personal questions.
-- A later unique spoken match for a **different** `app_user_id` does not silently replace the stored identity (`next_action: already_identified`).
-- Replacement only when the caller explicitly says they are calling for another registered parent/family (`on_behalf_of: true`).
-- Ordinary mention of a name is not a reason to call the tool or switch identity (wrapper v5).
+## Async architecture
 
-## Exact ElevenLabs manual setup
+ElevenLabs Native Agent has no supported Laravel push into a live Twilio conversation (`execution_mode: async` only unblocks the same HTTP call; `client_tool_result` needs the client SDK socket). Option B:
+
+- Table `voice_identity_searches`
+- Job `RunExtendedVoiceIdentitySearchJob` on the existing database queue (`queue:work` already running)
+- `POST /api/voice/tools/start-extended-identity-search` → `{status: searching}`
+- `POST /api/voice/tools/extended-identity-search-status` → searching / unique / ambiguous / not_found / failed
+- UNIQUE binds through existing `VoiceCustomerIdentityStore::bindUnique()` and will not overwrite a different unique identity
+
+Prompt wrapper **v6**, section **F. EXTENDED IDENTITY SEARCH**.
+
+## ElevenLabs manual changes required
 
 This repo does not change the dashboard.
 
-1. Agents → YFS Voice Assistant → Tools → create webhook tool (or JSON editor).
-2. Paste the full JSON in `docs/Voice/CUSTOMER_IDENTITY.md` (includes `response_timeout_secs: 20`).
-3. Set Authorization to the **existing** workspace secret already used by `get_public_shows` (replace `secret_id` placeholder). Do not create a new secret.
-4. Confirm `system__caller_id` and `system__conversation_id` are **dynamic variables**, not LLM description fields.
-5. Assign the tool to the agent. Do not add an LLM `phone` parameter.
-
-Filler / waiting speech (2–3 minutes): `docs/Voice/ELEVENLABS_TOOL_FILLER.md`
-
-- `resolve_customer_identity`: `pre_tool_speech: force`, optional `tool_call_sound: typing` with `auto`
-- `get_public_shows` / `get_show_brands`: `pre_tool_speech: auto` (do not force filler on instant lookups)
-- Per-tool, not agent-wide
-- Phrases follow the current conversation language; examples in wrapper v5 (RU/EN/UK)
-- Not implemented in Laravel, not an extra LLM call, no sleep
-
-## Prompt
-
-`VoiceAssistantPromptBuilder` wrapper **v5**, section **E. CALLER IDENTITY**:
-
-- Public questions do not require identity and must not call this tool
-- Unique caller is not re-asked for a name
-- Unknown personal caller asks name, then the tool
-- Ambiguous asks child name, then the tool again
-- not_found / source_unavailable are not automatic escalation
+1. Keep `resolve_customer_identity` as documented in `docs/Voice/CUSTOMER_IDENTITY.md` (`pre_tool_speech: force`).
+2. Add `start_extended_identity_search` and `get_extended_identity_search_status` from `docs/Voice/EXTENDED_IDENTITY_SEARCH.md`.
+3. Reuse the existing Authorization secret. Do not create a new token.
+4. `system__caller_id` / `system__conversation_id` must be system dynamic variables.
+5. Filler: start `pre_tool_speech: auto`; status `off`. Fast identity still uses “Секунду, сейчас посмотрю.” Extended search must say it may take a little time and continue the conversation.
 
 ## Tests
 
 PHPUnit (no SQLite install; DB feature tests skip without `pdo_sqlite`):
 
-TOOL: unique / ambiguous / not_found / name+child resolves / still ambiguous / source_unavailable / missing name+child / auth 401
+Bitrix client: phone unique / ambiguous / not_found; HTTP error; timeout; malformed; rate limit; write methods not allowlisted; no `%PHONE`/`FIND`.
 
-BINDING: unique binds when trusted contact exists; ambiguous does not bind; not_found does not create fake identity; source_unavailable does not destroy existing unique; existing unique is not replaced
+Linkage: unique email → YFS; missing email; unknown email; two YFS emails → ambiguous; JFS unavailable.
 
-PROMPT: public questions skip identity; unknown asks name; ambiguous asks child; unique is not re-identified
+Resolver: YFS unique skips Bitrix; YFS miss + Bitrix email → YFS unique; Bitrix without email not unique; Bitrix email not in YFS; multiple Bitrix candidates; YFS phone ambiguous does not let Bitrix pick; Bitrix failure falls back; name miss → Bitrix → YFS; Bitrix contact alone never YFS unique; container injects client+linker.
 
-REGRESSION: `get_public_shows`, `get_show_brands`, conversation initiation, preferred language, post-call language tests remain green
+Async: start searching; running→searching; unique display_name only; ambiguous/not_found/failed; bind VoiceContact; do not overwrite different identity; runner failed does not bind.
 
-Voice-related run: 128 passed, 20 skipped (sqlite).
+Security: tool JSON has no phone/email/internal ids/raw CRM; auth 401 on new routes.
+
+Regression: public shows/brands, initiation, preferred language / post-call, prompt v6, Node-facing filler rules.
+
+Voice-related run: **140 passed**, 30 skipped (no `pdo_sqlite`; SQLite was not installed).
 
 ## Production smoke (no PII printed)
 
-`php artisan optimize` on this host.
+`php artisan migrate --force` (`voice_identity_searches`) and `php artisan optimize` on this host.
 
 | Check | Result |
 | --- | --- |
-| Unauthorized identity tool | HTTP 401 |
+| Bitrix configured / connectivity | true / true; scopes crm, telephony, call, user |
+| Unauthorized identity / start / status | HTTP 401 |
 | Wrong token | HTTP 401 |
-| Empty body | HTTP 200, `invalid_request` / `ask_name` |
-| Nonsense name | HTTP 200, `not_found`; no customer/phone/email/id keys |
+| Empty identity body | HTTP 200, `invalid_request` |
+| Nonsense name | HTTP 200, `not_found`; no email/phone/id keys |
 | `get_public_shows` | HTTP 200, `ok: true`, count 5 |
 | `get_show_brands` | HTTP 200, `ok: true` |
 | POC `test-context` | HTTP 200 |
 | Conversation initiation | HTTP 200, keys `type` + `conversation_config_override` |
-| JFS | configured; `lastReadFailed` false after lookups |
+| JFS | configured; `lastReadFailed` false; 5 public events |
+| Queue worker | existing `yfs-ai` `queue:work` running |
 
 ## Safety
 
-- JFS: read-only SELECTs. No INSERT/UPDATE/DELETE.
-- Bitrix: not used, no credentials, no REST, untouched
-- Existing Voice tools `get_public_shows` and `get_show_brands` unchanged (new route/controller only)
-- Instagram / JFS Core write path / Twilio / Node voice-runtime / ElevenLabs dashboard unchanged
-- Logs: `voice.tools.resolve_customer_identity` with `ok` / `status` / `match_method` / `match_count` / `bind` only
+- Bitrix: **read-only**. Allowlist only. No contact/deal/lead/timeline/activity/telephony writes.
+- JFS: **read-only** SELECTs. No INSERT/UPDATE/DELETE.
+- YFS identity remains canonical. Bitrix contact_id is not Voice proof of identity.
+- ElevenLabs never receives raw CRM, phones, emails, candidate lists, or the webhook URL.
+- Existing Voice tools, initiation, language memory, post-call, Instagram, Node fallback runtime, Twilio routing unchanged aside from identity fast-path + new optional tools.
+- Logs: status, match_method, match_count, method name, milliseconds, sanitized error codes only.
 
-## Commit hash
+## Unresolved limitations
 
-`19051289ff7e77a175ced1dfd32d60faabf75dad`
+- ElevenLabs dashboard still needs a manual paste of the two new tools.
+- Live mutation of a running extended search when the caller adds a hint later is not in this version; an in-flight row is reused.
+- Bitrix `crm.contact.get` latency on unique real contacts was not measured (no real-client PII in the smoke).
+- Name search uses `%NAME` because most contacts on this portal have empty `LAST_NAME`; totals above 8 are treated as ambiguous.
+- Phone is not unique in YFS or Bitrix; ambiguous stays ambiguous.
+- pdo_sqlite is still absent; isolated DB feature tests skip rather than installing SQLite.

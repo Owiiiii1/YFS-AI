@@ -80,7 +80,45 @@ final class FakeJfsReadService extends JfsReadService
     {
         $this->findClientByEmailCalls++;
 
-        return ['status' => 'not_found', 'client' => null, 'children' => []];
+        $email = mb_strtolower(trim($email));
+        if ($email === '' || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            return ['status' => 'invalid', 'client' => null, 'children' => []];
+        }
+        if ($this->lastReadFailed()) {
+            return ['status' => 'unavailable', 'client' => null, 'children' => []];
+        }
+
+        $matches = [];
+        foreach ($this->clients as $client) {
+            $stored = isset($client['email']) && is_string($client['email'])
+                ? mb_strtolower(trim($client['email']))
+                : '';
+            if ($stored !== '' && $stored === $email) {
+                $matches[] = $client;
+            }
+        }
+
+        if ($matches === []) {
+            return ['status' => 'not_found', 'client' => null, 'children' => []];
+        }
+        if (count($matches) > 1) {
+            return ['status' => 'ambiguous', 'client' => null, 'children' => []];
+        }
+
+        $user = $matches[0];
+
+        return [
+            'status' => 'found',
+            'client' => [
+                'id' => (int) $user['id'],
+                'name' => isset($user['name']) && is_string($user['name']) ? trim($user['name']) : null,
+                'email' => $email,
+                'phone' => (string) ($user['phone'] ?? ''),
+                'role' => (string) ($user['role'] ?? 'client'),
+                'status' => (string) ($user['status'] ?? 'active'),
+            ],
+            'children' => [],
+        ];
     }
 
     public function findClientsByPhoneDigits(string $phone): array

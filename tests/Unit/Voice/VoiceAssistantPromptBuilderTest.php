@@ -84,8 +84,8 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertSame($first->prompt, $second->prompt);
         $this->assertNotSame($first->generatedAt, $second->generatedAt);
         $this->assertNotSame($first->version, $changed->version);
-        $this->assertStringStartsWith('v5-', $first->version);
-        $this->assertMatchesRegularExpression('/^v5-[a-f0-9]{64}$/', $first->version);
+        $this->assertStringStartsWith('v6-', $first->version);
+        $this->assertMatchesRegularExpression('/^v6-[a-f0-9]{64}$/', $first->version);
     }
 
     #[Test]
@@ -118,9 +118,10 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertStringContainsString('Do not call resolve_customer_identity for them', $prompt);
         $this->assertStringContainsString('Подскажите, пожалуйста, ваше имя и фамилию.', $prompt);
         $this->assertStringContainsString('ask for the child’s first name', $prompt);
-        $this->assertStringContainsString('already uniquely established', $prompt);
+        $this->assertStringContainsString('start_extended_identity_search', $prompt);
+        $this->assertStringContainsString('get_extended_identity_search_status', $prompt);
         $this->assertStringContainsString('Exact client wording.', $prompt);
-        $this->assertStringStartsWith('v5-', $assembled->version);
+        $this->assertStringStartsWith('v6-', $assembled->version);
     }
 
     #[Test]
@@ -129,7 +130,7 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $builder = new VoiceAssistantPromptBuilder;
         $assembled = $builder->assemble([]);
 
-        $this->assertMatchesRegularExpression('/^v5-[a-f0-9]{64}$/', $assembled->version);
+        $this->assertMatchesRegularExpression('/^v6-[a-f0-9]{64}$/', $assembled->version);
         $this->assertStringContainsString('KNOWN POLICY FACT', $assembled->prompt);
         $this->assertStringContainsString('get_public_shows', $assembled->prompt);
         $this->assertStringContainsString('get_show_brands', $assembled->prompt);

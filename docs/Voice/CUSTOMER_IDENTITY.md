@@ -1,12 +1,14 @@
 # Voice Customer Identity (YFS Core)
 
-Status: **Current** for phone identification on conversation initiation, spoken-name Native Agent tool `resolve_customer_identity`, and compact binding on `VoiceContact`.
+Status: **Current** for phone identification on conversation initiation, spoken-name Native Agent tool `resolve_customer_identity`, compact binding on `VoiceContact`, optional Bitrix24 read-only fallback, and asynchronous extended identity search.
 
 Canonical audit: `docs/Voice/CUSTOMER_IDENTITY_AND_BITRIX_AUDIT.md`.  
+Bitrix fallback: `docs/Voice/BITRIX_IDENTITY_FALLBACK.md`.  
+Extended search: `docs/Voice/EXTENDED_IDENTITY_SEARCH.md`.  
 Filler / pre-tool speech: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`.  
 ElevenLabs live-tool paste fields: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
 
-Bitrix24 is not connected. Identity reads JFS only through `JfsReadService` (SELECT). Laravel never writes `app_users.phone` or any other JFS row.
+YFS Core remains the canonical identity for Voice. Bitrix is a read-only hint source. A Bitrix contact is never a YFS identity by itself. Identity reads JFS only through `JfsReadService` (SELECT). Laravel never writes `app_users.phone` or any other JFS row. Bitrix write methods are not used.
 
 This repo does not change the ElevenLabs dashboard. Paste the JSON below into the agent tool editor.
 
@@ -15,9 +17,22 @@ This repo does not change the ElevenLabs dashboard. Paste the JSON below into th
 ## Flow
 
 ```text
+FAST SEARCH (inside initiation / resolve_customer_identity)
+
+incoming caller_id or spoken name
+  → YFS Core lookup first
+  → UNIQUE? use YFS identity (Bitrix is not called)
+  → phone AMBIGUOUS? keep YFS ambiguous (Bitrix must not pick)
+  → source_unavailable? keep YFS result (Bitrix is not used to invent identity)
+  → otherwise optional Bitrix exact phone / controlled name lookup
+      → emails stay inside Laravel
+      → JfsReadService::findClientByEmail()
+      → UNIQUE YFS match → existing CustomerIdentityResult UNIQUE
+      → otherwise unknown / ambiguous; Bitrix contact is not authenticated
+
 Initiation (caller_id)
   → PhoneNumberNormalizer / VoiceContactDirectory
-  → CustomerIdentityResolver::resolveByPhone()
+  → CustomerIdentityResolver::resolveByPhoneFast()
   → unique | ambiguous | not_found | source_unavailable
   → compact yfs_customer on voice_contacts.metadata (when not source_unavailable)
   → store elevenlabs_conversation_id when ElevenLabs sent conversation_id
@@ -26,8 +41,9 @@ Initiation (caller_id)
 Spoken identity (personal question, unknown / ambiguous / other number)
   → agent asks name (then child name if needed)
   → POST /api/voice/tools/resolve-customer-identity
-  → CustomerIdentityResolver::resolveBySpokenHints(name, child_name)
+  → CustomerIdentityResolver::resolveBySpokenHintsFast(name, child_name)
   → UNIQUE binds compact identity onto the current VoiceContact when a trusted session id is present
+  → if still not unique and a personal fact is still needed → start_extended_identity_search
 ```
 
 Public show questions still use `get_public_shows` / `get_show_brands` without identification.
@@ -45,15 +61,18 @@ Public show questions still use `get_public_shows` / `get_show_brands` without i
 
 Do not compare `voice_contacts.phone_normalized` as a string to `app_users.phone`.
 
+Bitrix phone lookup, when used, is exact (`crm.duplicate.findbycomm` type=PHONE, then `telephony.externalCall.searchCrmEntities` for CONTACT only). Do not use `%PHONE` or `FIND`.
+
 ---
 
 ## Name and child lookup
 
-Used by `CustomerIdentityResolver::resolveByName()`, `resolveByChildName()`, and `resolveBySpokenHints()`. The Native Agent webhook `resolve_customer_identity` calls `resolveBySpokenHints` only. Matching logic is not duplicated in the controller.
+Used by `CustomerIdentityResolver::resolveByName()`, `resolveByChildName()`, and `resolveBySpokenHints()`. The Native Agent webhook `resolve_customer_identity` calls `resolveBySpokenHintsFast` (YFS first, then optional Bitrix name → email → YFS). Matching logic is not duplicated in the controller.
 
 - Parent: whole-word match on `app_users.name` (order-insensitive). `"Ann"` does not match `"Anna"`.
 - Child: whole-word match on `children.first_name`; returns **parent** identity rows only. Child names are not returned.
 - Several parents → `ambiguous`. Do not auto-pick. Do not list names to the agent.
+- A Bitrix name match is only a candidate for email linkage. It does not confirm a YFS customer.
 
 ---
 
@@ -81,7 +100,7 @@ Not found (initiation only): `status`, `match_method`, `matched_at`.
 
 **Spoken tool binding:** only a UNIQUE result is written through `VoiceCustomerIdentityStore::bindUnique()`. Ambiguous and not_found do not bind and do not create a fake identity. `source_unavailable` does not destroy an existing unique identity.
 
-**Not stored:** phones, emails, children lists, payments, tickets, contracts, photos, stage plans, secrets.
+**Not stored:** phones, emails, children lists, payments, tickets, contracts, photos, stage plans, secrets, raw Bitrix payloads, Bitrix contact ids as YFS proof.
 
 The calling number is **not** written to YFS/JFS. `app_users.phone` is never updated because someone identified themselves from another handset.
 
@@ -114,6 +133,7 @@ If no trusted session identifier is present, lookup still runs and the agent sti
 - `resolve_customer_identity` is for unknown / ambiguous / other-number callers who need a personal fact.
 - If the contact already has a unique `yfs_customer` and spoken hints uniquely match a **different** `app_user_id`, Laravel does **not** switch. The tool returns `status: unique`, `next_action: already_identified`, and the **existing** `display_name`.
 - Replacement is allowed only when the agent sets `on_behalf_of: true` because the caller explicitly said they are calling for a different registered parent or family.
+- Extended search uses the same `bindUnique` rule and will not overwrite a different unique identity.
 
 Do not switch identity because a name appeared in an ordinary question.
 
@@ -139,11 +159,11 @@ Call resolve_customer_identity only when personal/customer-specific information 
 - Public questions (Chicago date, Los Angeles brands, …): do not identify; call the public show tools.
 - Personal question + unique caller: do not ask the name again.
 - Personal question + unknown/ambiguous: ask name and surname, then call the tool. If `ambiguous` / `ask_child_name`, ask the child’s first name and call again.
-- `not_found`: do not invent a client. One careful re-ask is allowed. Then continue without identity or say personal data is not available. Not automatic escalation.
-- Still ambiguous after child name (`ask_additional_identifier`): do not guess and do not list clients. We do not currently support extra identifiers beyond name + child name.
+- `not_found`: do not invent a client. One careful re-ask is allowed. Then `start_extended_identity_search` if a personal fact is still needed, or continue without identity. Not automatic escalation.
+- Still ambiguous after child name (`ask_additional_identifier`): do not guess and do not list clients. You may start extended search.
 
 RU ask: `Подскажите, пожалуйста, ваше имя и фамилию.`  
-EN / UK: natural equivalents already in wrapper v5.
+EN / UK: natural equivalents already in wrapper v6.
 
 ### Request / response contract
 
@@ -171,7 +191,7 @@ SOURCE UNAVAILABLE: `ok: false`, `status: source_unavailable`, `next_action: con
 
 INVALID (missing name and child_name): `ok: false`, `status: invalid_request`, `next_action: ask_name`.
 
-Never returned to ElevenLabs: phone, email, internal ids, candidate lists, children lists, payments, CRM dumps, secrets.
+Never returned to ElevenLabs: phone, email, internal ids, candidate lists, children lists, payments, CRM dumps, secrets, Bitrix payloads.
 
 Missing/invalid Bearer: `401` `{"message":"Unauthorized"}`.
 
@@ -232,6 +252,8 @@ Reuse the **existing** Authorization secret already attached to `get_public_show
 
 After paste: open the Authorization header and select the **same** workspace secret used by the public show tools. Confirm `system__caller_id` / `system__conversation_id` show as dynamic variables, not LLM parameters.
 
+Extended search tools: `docs/Voice/EXTENDED_IDENTITY_SEARCH.md`.
+
 ---
 
 ## Conversation initiation
@@ -252,18 +274,18 @@ After paste: open the Authorization header and select the **same** workspace sec
 
 `language` is still omitted unless en/ru/uk is known. Stored `voice_contacts.preferred_language` wins over JFS `app_users.language`. JFS language is used only when Voice has no stored preference and the phone match is unique.
 
-JFS errors must not fail the webhook.
+JFS and Bitrix errors must not fail the webhook.
 
 ---
 
 ## Prompt
 
-Wrapper **v5**, section **E. CALLER IDENTITY** (includes when to call `resolve_customer_identity` and short waiting-phrase examples). Runtime `CALLER CONTEXT` is appended when initiation resolves identity and is not part of the prompt version hash.
+Wrapper **v6**, section **E. CALLER IDENTITY** and **F. EXTENDED IDENTITY SEARCH**. Runtime `CALLER CONTEXT` is appended when initiation resolves identity and is not part of the prompt version hash.
 
 ---
 
 ## Logs
 
-Allowed: `status`, `match_method`, `match_count`, tool `ok`, bind outcome (`bound` / `preserved` / `skipped` / `no_session` / `unchanged`).
+Allowed: `status`, `match_method`, `match_count`, tool `ok`, bind outcome (`bound` / `preserved` / `skipped` / `no_session` / `unchanged`), sanitized Bitrix timings.
 
-Not allowed: names, phones, emails, ids, candidate lists.
+Not allowed: names, phones, emails, ids, candidate lists, raw CRM payloads, webhook URLs.

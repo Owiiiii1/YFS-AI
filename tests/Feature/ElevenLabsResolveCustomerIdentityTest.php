@@ -54,6 +54,9 @@ class ElevenLabsResolveCustomerIdentityTest extends TestCase
         ], [
             'Authorization' => 'Bearer test-voice-runtime-token',
         ])->assertUnauthorized();
+
+        $this->postJson('/api/voice/tools/start-extended-identity-search')->assertUnauthorized();
+        $this->postJson('/api/voice/tools/extended-identity-search-status')->assertUnauthorized();
     }
 
     #[Test]
