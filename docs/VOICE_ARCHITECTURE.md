@@ -341,7 +341,8 @@ The previous “native LLM is not the business brain” decision is superseded. 
 
 The following are **not** current:
 
-- YFS Core participant / phone lookup Voice tools
+- YFS Core Native Agent identity tool (`resolve_customer_identity`) — Laravel resolver exists; ElevenLabs tool is not registered
+- YFS Core participant / package / payment Voice tools
 - Bitrix24 Voice tools / connectors (not connected yet)
 - production business tools beyond public shows, public brand lineups, and the Native Agent smoke-test webhook
 - full production cutover of every inbound number onto Native Agent (existing Custom LLM routing is unchanged fallback)
@@ -434,16 +435,16 @@ JSON:
 ```json
 {
   "prompt": "...assembled prompt...",
-  "version": "v3-<sha256>",
+  "version": "v4-<sha256>",
   "generated_at": "<ISO-8601 UTC>"
 }
 ```
 
-The assembled prompt starts with immutable runtime decision rules: A KNOWN POLICY FACT, B MISSING DYNAMIC FACT, C HUMAN REQUIRED, D LIVE SHOW TOOLS (`get_public_shows` / `get_show_brands`). Policy section bodies are not rewritten. `version` includes wrapper version `v3`.
+The assembled prompt starts with immutable runtime decision rules: A KNOWN POLICY FACT, B MISSING DYNAMIC FACT, C HUMAN REQUIRED, D LIVE SHOW TOOLS (`get_public_shows` / `get_show_brands`), E CALLER IDENTITY. Policy section bodies are not rewritten. `version` includes wrapper version `v4`. Unique YFS phone matches add a runtime CALLER CONTEXT block (not part of the version hash).
 
 **Current (backend adapter).** This repo does **not** change ElevenLabs agent settings. The operator pastes the URL and header into ElevenLabs.
 
-Official contract (ElevenLabs Personalization / Twilio personalization docs): the webhook **POST**s caller metadata and must return `conversation_initiation_client_data`. `type` is included as in the current ElevenLabs examples. System prompt override is always sent. `agent.language` is added only when `voice_contacts.preferred_language` is a supported en/ru/uk value. Custom `dynamic_variables` are omitted until the agent declares them. YFS Core / Bitrix matching is **not** connected.
+Official contract (ElevenLabs Personalization / Twilio personalization docs): the webhook **POST**s caller metadata and must return `conversation_initiation_client_data`. `type` is included as in the current ElevenLabs examples. System prompt override is always sent. `agent.language` is added only when a supported en/ru/uk value is known (stored Voice preference first; unique JFS `app_users.language` only if Voice has none). Custom `dynamic_variables` are omitted until the agent declares them. Unique JFS phone matches preload compact identity; Bitrix is **not** connected. Details: `docs/Voice/CUSTOMER_IDENTITY.md`.
 
 ```text
 Admin

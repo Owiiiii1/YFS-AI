@@ -14,7 +14,7 @@ Path: `/var/www/yfs-ai`
 | Module | Phase | Status |
 | --- | --- | --- |
 | Instagram / Facebook Assistant | 1 | **IMPLEMENTED / CONNECTED**. Instagram Direct product. Rules: `docs/INSTAGRAM_BOT.md`. Facebook admin UI is hidden. |
-| Voice Assistant | 2 | **IN PROGRESS**. Selected Phase 2 architecture: ElevenLabs Native Agent → Laravel webhook tools (**POC SUCCESS**). Node Custom LLM remains experimental/fallback. Voice contacts/calls + language memory **Current**. Read-only public show/brand YFS Core tools **Current**. Bitrix **Planned**. Canonical architecture: `docs/VOICE_ARCHITECTURE.md`. Product/roadmap: `docs/VOICE_ASSISTANT.md`. |
+| Voice Assistant | 2 | **IN PROGRESS**. Selected Phase 2 architecture: ElevenLabs Native Agent → Laravel webhook tools (**POC SUCCESS**). Node Custom LLM remains experimental/fallback. Voice contacts/calls + language memory **Current**. Read-only public show/brand YFS Core tools **Current**. YFS Core caller identity **Current**. Bitrix **Planned**. Canonical architecture: `docs/VOICE_ARCHITECTURE.md`. Product/roadmap: `docs/VOICE_ASSISTANT.md`. |
 | Sales Agent | 3 | **PLANNED**. Implementation not started. Outbound AI sales calling. Not specified in detail yet. |
 
 Voice Assistant and Sales Agent are separate subsystems of this backend. They must not share one agent prompt or one business-rule set. Shared platform pieces (provider interface, call storage, tools, analysis, admin patterns) may be reused later.

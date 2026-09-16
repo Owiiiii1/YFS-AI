@@ -2,63 +2,125 @@
 
 ## Task
 
-Technical audit of Voice caller identification against YFS Core and Bitrix24. Research only. No implementation.
+First production Voice customer-identity stage: identify callers against YFS Core / JFS only. Bitrix24 not connected. No package/payment/rehearsal tools.
 
 ## Status
 
-Documentation only. Production code, schema, config, tools, and ElevenLabs settings were not changed.
+Done. Conversation initiation still returns the existing ElevenLabs `conversation_initiation_client_data` contract. Unique JFS phone matches store a compact identity on `voice_contacts.metadata` and add a runtime CALLER CONTEXT block. Ambiguous matches are not auto-selected.
 
-## Commit
+## What was implemented
 
-`544a4c5a8d9e57a2fcb60f1e74e022dd0e0371e2` on `main`
+```text
+caller_id
+  → VoiceContactDirectory
+  → CustomerIdentityResolver::resolveByPhone()
+  → JfsReadService identity SELECTs
+  → unique | ambiguous | not_found | source_unavailable
+```
 
-Document Voice customer identity and Bitrix audit.
+### Identity contract
 
-## Repositories examined (read-only)
-
-| Path | Result |
+| status | Meaning |
 | --- | --- |
-| `/var/www/yfs-ai` | Voice Assistant. `JfsReadService`, initiation webhook, `voice_contacts`. |
-| `/var/www/jfs` | YFS Core. Models, inbound `yfs-report-api`, Bitrix-labeled catalog codes. |
-| `/var/www/fashion-planner` | No Bitrix REST client in app sources. |
-| `/var/www/yfs-ai-sorter` | No Bitrix REST client. |
+| `unique` | Exactly one client `app_users` row (`role=client`, not blocked) |
+| `ambiguous` | More than one client; no `yfs_app_user_id` / display name returned to the agent |
+| `not_found` | Zero clients |
+| `source_unavailable` | JFS unconfigured or query failed; initiation still 200 |
 
-## Verified findings (short)
+Unique fields (Laravel-side): `yfs_app_user_id`, `display_name`, `preferredLanguage` from `app_users.language` when present. Phone, email, children, payments are not returned from identity lookups.
 
-- Client record: JFS `app_users` (`name`, `email` unique, one `phone`, no first/last columns).
-- Children: `children.client_app_user_id`, `first_name` only (`last_name` dropped).
-- Participation: `child_event_assignments` + packages/brands/tickets/rehearsals/stage plans.
-- Phones stored as masked `+CC-XXX-…`. Digit-normalized phone is **not unique** (125 duplicate groups / 267 client rows of 791 with phones).
-- `JfsReadService` today: public events/brands + **email** client lookup. No phone lookup.
-- Initiation: `caller_id` → `voice_contacts` only. No JFS/Bitrix.
-- Bitrix24 REST client: **NOT AVAILABLE** in these repos. Existing integration is inbound `POST /api/incoming/new-client` (`yfs-report-api`) keyed by email, plus catalog `code` fields labeled Bitrix code. `external_id` on import logs; no `bitrix_contact_id`.
+### Phone matching
 
-## Inferred / not available
+- Digit-only comparison against masked JFS `app_users.phone`
+- 8–15 digits
+- US 10-digit ↔ 11-digit with leading `1` only
+- Phone is not treated as unique
 
-- `external_id` as Bitrix deal id: INFERRED.
-- Live `crm.contact.list` / deals / timeline: NOT AVAILABLE (would be a new client).
-- Workshop / fitting tables: NOT AVAILABLE (stage codes only).
-- ElevenLabs production `pre_tool_speech` values: NOT AVAILABLE in git.
+### Name / child (resolver ready, no ElevenLabs tool)
 
-## Recommended architecture
+- `findClientsByName` / `resolveByName`: whole-word match on `app_users.name`
+- `findClientsByChildName` / `resolveByChildName`: match `children.first_name`, return parent identity rows only (no child names)
+- `resolveBySpokenHints($name, $childName)` for a later `resolve_customer_identity` tool. No new public webhook.
 
-YFS Core as Voice identity source of record. `CustomerIdentityResolver` in Laravel reading JFS (phone digits → then name/child disambiguation). Compact session identity only. No Bitrix HTTP on conversation initiation. Native Agent fillers via ElevenLabs `pre_tool_speech` / tool-call sounds, not a Laravel LLM filler.
+### VoiceContact metadata (`yfs_customer`)
 
-Canonical write-up: `docs/Voice/CUSTOMER_IDENTITY_AND_BITRIX_AUDIT.md`.
+Stored when status is not `source_unavailable`:
 
-## Production confirmation
+- unique: `status`, `match_method`, `matched_at`, `app_user_id`, `display_name`
+- ambiguous: `status`, `match_method`, `matched_at`, `candidate_count`
+- not_found: `status`, `match_method`, `matched_at`
 
-- No migrations
-- No new endpoints/tools
-- No YFS DB or Bitrix writes
-- No config/secret changes
-- Instagram Assistant, existing Voice tools, Node Custom LLM fallback untouched
+**Not stored:** phones, emails, children lists, payments, tickets, contracts, photos, stage plans, secrets.
+
+`source_unavailable` does not overwrite existing metadata.
+
+### Conversation initiation
+
+`POST /api/voice/elevenlabs/conversation-initiation` top-level JSON unchanged: `type` + `conversation_config_override.agent.prompt` (+ `language` when en/ru/uk is known).
+
+Stored `voice_contacts.preferred_language` still wins. Unique JFS language is used only when Voice has no stored preference. JFS failure does not fail the call. `calls_count` is still not incremented here.
+
+### Prompt
+
+`VoiceAssistantPromptBuilder` wrapper **v4**, section **E. CALLER IDENTITY**. Runtime CALLER CONTEXT is not hashed into `version`. Policy section bodies were not rewritten.
+
+Public questions still go through `get_public_shows` / `get_show_brands` without identification.
+
+## Files changed
+
+- `app/Services/Jfs/JfsReadService.php`
+- `app/Services/Jfs/JfsIdentityMatch.php`
+- `app/Services/Voice/Identity/CustomerIdentityResult.php`
+- `app/Services/Voice/Identity/CustomerIdentityResolver.php`
+- `app/Services/Voice/Identity/VoiceCustomerIdentityStore.php`
+- `app/Services/Voice/Identity/VoiceConversationInitiationService.php`
+- `app/Http/Controllers/Api/ElevenLabsConversationInitiationController.php`
+- `app/Services/Voice/Prompt/VoiceAssistantPromptBuilder.php`
+- tests (identity unit tests, initiation service tests, prompt v4, FakeJfsReadService identity methods)
+- `docs/Voice/CUSTOMER_IDENTITY.md`
+- `docs/VOICE_ARCHITECTURE.md`, `docs/VOICE_ASSISTANT.md`, `docs/ARCHITECTURE.md`, `docs/PROJECT.md`
+- `docs/Development/LATEST_WORK_REPORT.md`
 
 ## Tests
 
-Not run (docs-only).
+PHPUnit (no SQLite install; DB feature tests skip without `pdo_sqlite`):
 
-## Files
+- Phone unique / unknown / duplicate → ambiguous
+- Masked JFS phone vs 10/11-digit US caller
+- JFS unavailable ≠ not_found
+- Name unique / ambiguous / unknown
+- Child resolves parent; shared child name → ambiguous; unknown child
+- Initiation contract keys unchanged; ambiguous does not name clients; JFS failure still 200; preferred_language still works
+- Existing `get_public_shows`, `get_show_brands`, POC test-context, post-call language tests remain green
 
-- `docs/Voice/CUSTOMER_IDENTITY_AND_BITRIX_AUDIT.md`
-- `docs/Development/LATEST_WORK_REPORT.md`
+Run: 71 passed, 13 skipped (sqlite).
+
+## Production smoke (no PII printed)
+
+`php artisan optimize` on this host.
+
+| Check | Result |
+| --- | --- |
+| Unauthorized initiation | HTTP 401 |
+| Authorized initiation | HTTP 200, keys `type` + `conversation_config_override` |
+| Prompt | Contains E. CALLER IDENTITY, CALLER CONTEXT, live show tools |
+| `get_public_shows` | HTTP 200, `ok: true`, count 5 |
+| `get_show_brands` | HTTP 200, `ok: true` |
+| Resolver nonsense phone/name/child | `not_found` |
+| JFS configured | true; `lastReadFailed` false after those lookups |
+| Live phone-group counts (digits only, no numbers printed) | 517 unique groups, 129 ambiguous groups (276 rows) — matcher can return both unique and ambiguous |
+
+No JFS INSERT/UPDATE/DELETE. Bitrix not touched.
+
+## Safety
+
+- JFS: read-only SELECTs
+- Bitrix: not used, no credentials, no REST
+- Instagram Assistant behavior unchanged except shared `JfsReadService` additive identity methods
+- Existing public Voice tools unchanged
+- Node Custom LLM, Twilio, ElevenLabs dashboard unchanged
+- Logs: `voice.identity.resolved` with status / match_method / match_count only
+
+## Commit hash
+
+Recorded after git commit on `main`.

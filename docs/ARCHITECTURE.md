@@ -40,7 +40,7 @@ YFS AI Laravel backend
 | Subsystem | Transport | Status |
 | --- | --- | --- |
 | Instagram / Facebook Assistant | Meta messaging | Implemented / connected. Do not change this product to add voice. |
-| Voice Assistant | Inbound telephony (Twilio → ElevenLabs Native Agent → Laravel webhook tools) | Phase 2 in progress. Native webhook POC **SUCCESS**. Custom LLM remains experimental/fallback. Voice contacts/calls + language memory **Current**. Public show/brand YFS Core tools **Current**. Bitrix **Planned**. Canonical: `docs/VOICE_ARCHITECTURE.md`. |
+| Voice Assistant | Inbound telephony (Twilio → ElevenLabs Native Agent → Laravel webhook tools) | Phase 2 in progress. Native webhook POC **SUCCESS**. Custom LLM remains experimental/fallback. Voice contacts/calls + language memory **Current**. Public show/brand YFS Core tools **Current**. YFS Core caller identity **Current**. Bitrix **Planned**. Canonical: `docs/VOICE_ARCHITECTURE.md`. |
 | Sales Agent | Outbound telephony | Planned. Not specified here. |
 
 Phase 2 selected architecture is ElevenLabs Native Agent plus Laravel webhook tools (POC SUCCESS). Node Custom LLM is experimental/fallback and is not deleted. OpenAI Realtime and Gemini Live are not the Voice path. Instagram messages and voice transcripts stay in separate modules.

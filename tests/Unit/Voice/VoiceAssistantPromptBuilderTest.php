@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Voice;
 
+use App\Services\Voice\Identity\CustomerIdentityResult;
 use App\Services\Voice\Prompt\VoiceAssistantPromptBuilder;
 use Illuminate\Support\Carbon;
 use PHPUnit\Framework\Attributes\Test;
@@ -83,8 +84,8 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertSame($first->prompt, $second->prompt);
         $this->assertNotSame($first->generatedAt, $second->generatedAt);
         $this->assertNotSame($first->version, $changed->version);
-        $this->assertStringStartsWith('v3-', $first->version);
-        $this->assertMatchesRegularExpression('/^v3-[a-f0-9]{64}$/', $first->version);
+        $this->assertStringStartsWith('v4-', $first->version);
+        $this->assertMatchesRegularExpression('/^v4-[a-f0-9]{64}$/', $first->version);
     }
 
     #[Test]
@@ -112,8 +113,10 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertStringContainsString('get_public_shows', $prompt);
         $this->assertStringContainsString('get_show_brands', $prompt);
         $this->assertStringContainsString('Tool results override static policy for live show facts', $prompt);
+        $this->assertStringContainsString('E. CALLER IDENTITY', $prompt);
+        $this->assertStringContainsString('Подскажите, пожалуйста, ваше имя и фамилию.', $prompt);
         $this->assertStringContainsString('Exact client wording.', $prompt);
-        $this->assertStringStartsWith('v3-', $assembled->version);
+        $this->assertStringStartsWith('v4-', $assembled->version);
     }
 
     #[Test]
@@ -122,9 +125,36 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $builder = new VoiceAssistantPromptBuilder;
         $assembled = $builder->assemble([]);
 
-        $this->assertMatchesRegularExpression('/^v3-[a-f0-9]{64}$/', $assembled->version);
+        $this->assertMatchesRegularExpression('/^v4-[a-f0-9]{64}$/', $assembled->version);
         $this->assertStringContainsString('KNOWN POLICY FACT', $assembled->prompt);
         $this->assertStringContainsString('get_public_shows', $assembled->prompt);
         $this->assertStringContainsString('get_show_brands', $assembled->prompt);
+        $this->assertStringContainsString('E. CALLER IDENTITY', $assembled->prompt);
+    }
+
+    #[Test]
+    public function caller_identity_changes_prompt_text_but_not_version_hash(): void
+    {
+        $builder = new VoiceAssistantPromptBuilder;
+        $sections = [[
+            'key' => 'general',
+            'title' => 'General rules',
+            'instructions' => 'Stable policy.',
+            'sort_order' => 1,
+        ]];
+
+        $unknown = $builder->assemble($sections, identity: CustomerIdentityResult::notFound('phone'));
+        $unique = $builder->assemble(
+            $sections,
+            identity: CustomerIdentityResult::unique('phone', 77, 'Test Parent', 'en'),
+        );
+        $plain = $builder->assemble($sections);
+
+        $this->assertSame($plain->version, $unknown->version);
+        $this->assertSame($plain->version, $unique->version);
+        $this->assertStringContainsString('Status: identified.', $unique->prompt);
+        $this->assertStringContainsString('Test Parent', $unique->prompt);
+        $this->assertStringNotContainsString('77', $unique->prompt);
+        $this->assertStringNotContainsString('Status: identified.', $plain->prompt);
     }
 }

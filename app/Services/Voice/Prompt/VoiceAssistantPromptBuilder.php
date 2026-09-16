@@ -3,11 +3,12 @@
 namespace App\Services\Voice\Prompt;
 
 use App\Models\VoiceAssistantSetting;
+use App\Services\Voice\Identity\CustomerIdentityResult;
 use Illuminate\Support\Carbon;
 
 class VoiceAssistantPromptBuilder
 {
-    private const WRAPPER_VERSION = '3';
+    private const WRAPPER_VERSION = '4';
 
     private const SYSTEM_WRAPPER = <<<'TEXT'
 You are the Young Fashion Show (YFS) Customer Support Voice Assistant.
@@ -38,6 +39,16 @@ If date_announced is false or starts_at/ends_at is null, do not guess or name a 
 If brands is empty or lineup_published is false, say the lineup is not published yet. Do not invent brand names.
 An empty or unpublished tool result is not automatic escalation and is not a reason to offer a callback or collect contacts unless C applies.
 
+E. CALLER IDENTITY
+Public show questions (dates, city, venue, public brand lineup) do not require identifying the caller. Use get_public_shows / get_show_brands.
+If the runtime CALLER CONTEXT says the caller is identified, use their display name naturally. Do not ask for their name again unless they correct it. Never speak internal identifiers.
+If personal information is needed and the caller is not identified, ask for their full name:
+- RU: "Подскажите, пожалуйста, ваше имя и фамилию."
+- EN: "Could you tell me your first and last name, please?"
+- UK: "Підкажіть, будь ласка, ваше ім’я та прізвище."
+If the calling number matches more than one client, do not guess. Do not list possible clients or children. Ask for the parent’s full name. If still ambiguous, ask for the child’s first name.
+Do not invent a customer record. An unidentified or ambiguous caller is not automatic escalation and is not a reason to offer a callback unless C applies.
+
 Be conversational. Answer the question as fully as the policy allows.
 Do not repeat the same fallback after every question, such as "I don't have exact information", "I need to check with the team", "Would you like me to ask the team?", or "Can I take your contact details?"
 
@@ -50,7 +61,7 @@ TEXT;
     /**
      * Assemble the current enabled admin settings into a runtime prompt.
      */
-    public function build(?Carbon $generatedAt = null): VoiceAssistantRuntimePrompt
+    public function build(?Carbon $generatedAt = null, ?CustomerIdentityResult $identity = null): VoiceAssistantRuntimePrompt
     {
         $sections = VoiceAssistantSetting::query()
             ->where('enabled', true)
@@ -65,14 +76,17 @@ TEXT;
             ])
             ->all();
 
-        return $this->assemble($sections, $generatedAt);
+        return $this->assemble($sections, $generatedAt, $identity);
     }
 
     /**
      * @param  list<array{key: string, title: string, instructions: string, sort_order: int}>  $sections
      */
-    public function assemble(array $sections, ?Carbon $generatedAt = null): VoiceAssistantRuntimePrompt
-    {
+    public function assemble(
+        array $sections,
+        ?Carbon $generatedAt = null,
+        ?CustomerIdentityResult $identity = null,
+    ): VoiceAssistantRuntimePrompt {
         $sections = $this->sorted($sections);
         $prompt = self::SYSTEM_WRAPPER;
 
@@ -86,11 +100,45 @@ TEXT;
             }
         }
 
+        if ($identity !== null) {
+            $prompt .= "\n\n".$this->callerContext($identity);
+        }
+
         return new VoiceAssistantRuntimePrompt(
             prompt: $prompt,
             version: $this->versionFor($sections),
             generatedAt: ($generatedAt ?? now())->utc()->toIso8601String(),
         );
+    }
+
+    private function callerContext(CustomerIdentityResult $identity): string
+    {
+        $lines = [
+            'CALLER CONTEXT (runtime, from YFS Core identity). This block is not a policy section.',
+        ];
+
+        if ($identity->status === CustomerIdentityResult::UNIQUE) {
+            $name = $identity->displayName ?: 'the identified parent';
+            $lines[] = 'Status: identified.';
+            $lines[] = 'The caller is uniquely identified as '.$name.'.';
+            $lines[] = 'Use this name naturally. Do not speak internal identifiers. Do not ask for their name unless they correct it.';
+        } elseif ($identity->status === CustomerIdentityResult::AMBIGUOUS) {
+            $lines[] = 'Status: needs_clarification.';
+            $lines[] = 'The calling number or spoken name matches more than one client.';
+            $lines[] = 'Do not guess who is calling. Do not list possible clients or children.';
+            $lines[] = 'If a personal fact is needed, ask for the parent’s full name. If still ambiguous, ask for the child’s first name.';
+        } elseif ($identity->status === CustomerIdentityResult::SOURCE_UNAVAILABLE) {
+            $lines[] = 'Status: identity_unavailable.';
+            $lines[] = 'Caller identity could not be checked right now.';
+            $lines[] = 'Continue the conversation. Public show questions still use get_public_shows / get_show_brands. Do not invent a personal record.';
+        } else {
+            $lines[] = 'Status: unknown.';
+            $lines[] = 'The caller is not identified.';
+            $lines[] = 'Public show questions do not require identification.';
+            $lines[] = 'If a personal fact is needed, ask for first and last name.';
+        }
+
+        return implode("\n", $lines);
     }
 
     /**

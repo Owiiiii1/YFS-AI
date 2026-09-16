@@ -18,6 +18,7 @@ Related documents:
 - `docs/VOICE_ARCHITECTURE.md` — canonical architecture (Current / Planned / rejected)
 - `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md` — verbatim client Customer Support instruction (source of truth for Voice Assistant behaviour settings)
 - `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` — ElevenLabs UI fields for `get_public_shows` and `get_show_brands`
+- `docs/Voice/CUSTOMER_IDENTITY.md` — YFS Core caller identity on initiation
 - `docs/PROJECT.md` — phase statuses
 - `docs/ARCHITECTURE.md` — high-level subsystem map
 - `docs/EXTERNAL_SERVICES.md` — vendor roles
@@ -33,7 +34,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 | Subsystem | Status |
 | --- | --- |
 | Instagram / Facebook Assistant | **IMPLEMENTED / CONNECTED**. Do not change this product as part of Phase 2. |
-| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + Prompt Builder + initiation webhook adapter + voice contacts/calls journal **Current**. Read-only public show/brand YFS Core tools **Current**. Bitrix / AI post-call analysis **Planned**. |
+| Voice Assistant | **PHASE 2 — IN PROGRESS**. Selected architecture: Native ElevenLabs Agent + Laravel webhook tools (**POC SUCCESS**). Custom LLM experimental/fallback. Admin bot settings + Prompt Builder + initiation webhook adapter + voice contacts/calls journal **Current**. Read-only public show/brand YFS Core tools **Current**. YFS Core caller identity (phone) **Current**. Bitrix / AI post-call analysis **Planned**. |
 | Sales Agent | **PLANNED — PHASE 3**. Outbound calling. Not designed in detail here. Implementation not started. |
 
 **Selected Phase 2 (POC SUCCESS, see `docs/VOICE_ARCHITECTURE.md` § 13):**
@@ -210,7 +211,7 @@ The Voice Agent must call a Laravel tool instead of guessing when information is
 
 Planned tool/service areas:
 
-- YFS Core customer lookup
+- YFS Core customer lookup by phone/name/child (identity resolver **Current**; package/payment tools still Planned)
 - YFS participation / history
 - Bitrix24 contact / company
 - Bitrix deals

@@ -5,13 +5,17 @@ namespace Tests\Feature;
 use App\Models\VoiceAssistantSetting;
 use App\Models\VoiceCall;
 use App\Models\VoiceContact;
+use App\Services\Jfs\JfsReadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Support\FakeJfsReadService;
 use Tests\TestCase;
 
 class ElevenLabsConversationInitiationDatabaseTest extends TestCase
 {
     use RefreshDatabase;
+
+    private FakeJfsReadService $jfs;
 
     protected function setUp(): void
     {
@@ -23,6 +27,9 @@ class ElevenLabsConversationInitiationDatabaseTest extends TestCase
 
         config(['services.elevenlabs.tool_token' => 'test-elevenlabs-tool-token']);
         config(['services.voice_runtime.internal_token' => 'test-voice-runtime-token']);
+
+        $this->jfs = new FakeJfsReadService;
+        $this->app->instance(JfsReadService::class, $this->jfs);
     }
 
     #[Test]
@@ -58,6 +65,7 @@ class ElevenLabsConversationInitiationDatabaseTest extends TestCase
         $this->assertStringContainsString('Customer Support Voice Assistant', $prompt);
         $this->assertStringContainsString('get_public_shows', $prompt);
         $this->assertStringContainsString('get_show_brands', $prompt);
+        $this->assertStringContainsString('E. CALLER IDENTITY', $prompt);
         $this->assertArrayNotHasKey('llm', $payload['conversation_config_override']['agent']['prompt']);
         $this->assertArrayNotHasKey('language', $payload['conversation_config_override']['agent']);
     }
@@ -255,5 +263,106 @@ class ElevenLabsConversationInitiationDatabaseTest extends TestCase
         $this->assertSame(['prompt'], array_keys($payload['conversation_config_override']['agent']['prompt']));
         $this->assertStringContainsString('Use the app first.', $payload['conversation_config_override']['agent']['prompt']['prompt']);
         $this->assertSame(3, VoiceContact::query()->where('phone_normalized', $phone)->value('calls_count'));
+    }
+
+    #[Test]
+    public function unique_phone_stores_compact_identity_without_selecting_on_ambiguous(): void
+    {
+        VoiceAssistantSetting::query()->create([
+            'key' => 'general',
+            'title' => 'General rules',
+            'instructions' => 'Use the app first.',
+            'enabled' => true,
+            'sort_order' => 1,
+        ]);
+
+        $this->jfs->clients = [
+            [
+                'id' => 31,
+                'name' => 'Test Parent',
+                'language' => 'en',
+                'phone' => '+1-555-777-0007',
+                'children' => ['Kid'],
+            ],
+            [
+                'id' => 32,
+                'name' => 'Other Parent',
+                'language' => 'en',
+                'phone' => '+1-555-888-0008',
+                'children' => [],
+            ],
+            [
+                'id' => 33,
+                'name' => 'Twin Parent',
+                'language' => 'en',
+                'phone' => '+1-555-888-0008',
+                'children' => [],
+            ],
+        ];
+
+        $unique = $this->postJson('/api/voice/elevenlabs/conversation-initiation', [
+            'caller_id' => '+15557770007',
+        ], [
+            'Authorization' => 'Bearer test-elevenlabs-tool-token',
+        ])->assertOk()->json();
+
+        $this->assertSame(['type', 'conversation_config_override'], array_keys($unique));
+        $this->assertStringContainsString('Test Parent', $unique['conversation_config_override']['agent']['prompt']['prompt']);
+        $this->assertStringNotContainsString('31', $unique['conversation_config_override']['agent']['prompt']['prompt']);
+
+        $contact = VoiceContact::query()->where('phone_normalized', '+15557770007')->first();
+        $this->assertNotNull($contact);
+        $this->assertSame('unique', $contact->metadata['yfs_customer']['status'] ?? null);
+        $this->assertSame(31, $contact->metadata['yfs_customer']['app_user_id'] ?? null);
+        $this->assertSame('Test Parent', $contact->metadata['yfs_customer']['display_name'] ?? null);
+        $this->assertArrayNotHasKey('children', $contact->metadata['yfs_customer']);
+        $this->assertArrayNotHasKey('email', $contact->metadata['yfs_customer']);
+
+        $ambiguous = $this->postJson('/api/voice/elevenlabs/conversation-initiation', [
+            'caller_id' => '+15558880008',
+        ], [
+            'Authorization' => 'Bearer test-elevenlabs-tool-token',
+        ])->assertOk()->json();
+
+        $prompt = $ambiguous['conversation_config_override']['agent']['prompt']['prompt'];
+        $this->assertStringContainsString('needs_clarification', $prompt);
+        $this->assertStringNotContainsString('Other Parent', $prompt);
+        $this->assertStringNotContainsString('Twin Parent', $prompt);
+
+        $ambiguousContact = VoiceContact::query()->where('phone_normalized', '+15558880008')->first();
+        $this->assertSame('ambiguous', $ambiguousContact?->metadata['yfs_customer']['status'] ?? null);
+        $this->assertArrayNotHasKey('app_user_id', $ambiguousContact?->metadata['yfs_customer'] ?? []);
+        $this->assertSame(0, $ambiguousContact?->calls_count);
+    }
+
+    #[Test]
+    public function jfs_failure_does_not_break_initiation_or_language_override(): void
+    {
+        VoiceAssistantSetting::query()->create([
+            'key' => 'general',
+            'title' => 'General rules',
+            'instructions' => 'Use the app first.',
+            'enabled' => true,
+            'sort_order' => 1,
+        ]);
+        VoiceContact::query()->create([
+            'phone_normalized' => '+15551230009',
+            'phone_display' => '+15551230009',
+            'preferred_language' => 'ru',
+            'calls_count' => 1,
+        ]);
+        $this->jfs->configured = false;
+
+        $payload = $this->postJson('/api/voice/elevenlabs/conversation-initiation', [
+            'caller_id' => '+15551230009',
+        ], [
+            'Authorization' => 'Bearer test-elevenlabs-tool-token',
+        ])->assertOk()->json();
+
+        $this->assertSame(['type', 'conversation_config_override'], array_keys($payload));
+        $this->assertSame('ru', $payload['conversation_config_override']['agent']['language']);
+        $this->assertStringContainsString('identity_unavailable', $payload['conversation_config_override']['agent']['prompt']['prompt']);
+        $this->assertSame(1, VoiceContact::query()->where('phone_normalized', '+15551230009')->value('calls_count'));
+        $this->assertNull(VoiceContact::query()->where('phone_normalized', '+15551230009')->value('metadata'));
     }
 }

@@ -18,9 +18,8 @@ class JfsReadService
     }
 
     /**
-     * True when the last publicEvents / publicBrandLineups / findClientByEmail
-     * call could not read JFS (unconfigured or query exception). Empty result
-     * sets are not a failure.
+     * True when the last JFS read could not complete (unconfigured or query
+     * exception). Empty result sets are not a failure.
      */
     public function lastReadFailed(): bool
     {
@@ -167,6 +166,165 @@ class JfsReadService
             ],
             'children' => $children,
         ];
+    }
+
+    /**
+     * Voice identity lookup. Returns client id/name/language only.
+     *
+     * @return list<array{id:int,name:?string,language:?string}>
+     */
+    public function findClientsByPhoneDigits(string $phone): array
+    {
+        $this->lastReadFailed = false;
+        $keys = JfsIdentityMatch::phoneDigitKeys($phone);
+        if ($keys === []) {
+            return [];
+        }
+
+        if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
+            return [];
+        }
+
+        try {
+            $rows = $this->clientIdentityQuery()->get(['id', 'name', 'language', 'phone']);
+        } catch (Throwable) {
+            $this->lastReadFailed = true;
+            Log::warning('JFS identity phone read failed.');
+
+            return [];
+        }
+
+        $matches = [];
+        foreach ($rows as $row) {
+            if (! JfsIdentityMatch::phonesMatch((string) ($row->phone ?? ''), $phone)) {
+                continue;
+            }
+            $matches[] = $this->identityRecord($row);
+        }
+
+        return $this->uniqueIdentityRecords($matches);
+    }
+
+    /**
+     * @return list<array{id:int,name:?string,language:?string}>
+     */
+    public function findClientsByName(string $name): array
+    {
+        $this->lastReadFailed = false;
+        if (JfsIdentityMatch::words($name) === []) {
+            return [];
+        }
+
+        if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
+            return [];
+        }
+
+        try {
+            $rows = $this->clientIdentityQuery()->get(['id', 'name', 'language']);
+        } catch (Throwable) {
+            $this->lastReadFailed = true;
+            Log::warning('JFS identity name read failed.');
+
+            return [];
+        }
+
+        $matches = [];
+        foreach ($rows as $row) {
+            if (! JfsIdentityMatch::nameMatches((string) ($row->name ?? ''), $name)) {
+                continue;
+            }
+            $matches[] = $this->identityRecord($row);
+        }
+
+        return $this->uniqueIdentityRecords($matches);
+    }
+
+    /**
+     * Parents linked to a matching child first_name. Child names are not returned.
+     *
+     * @return list<array{id:int,name:?string,language:?string}>
+     */
+    public function findClientsByChildName(string $childName): array
+    {
+        $this->lastReadFailed = false;
+        if (JfsIdentityMatch::words($childName) === []) {
+            return [];
+        }
+
+        if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
+            return [];
+        }
+
+        try {
+            $rows = DB::connection('jfs')
+                ->table('children as c')
+                ->join('app_users as u', 'u.id', '=', 'c.client_app_user_id')
+                ->where('u.role', 'client')
+                ->where(function ($query): void {
+                    $query->whereNull('u.status')->orWhere('u.status', '!=', 'blocked');
+                })
+                ->get(['u.id', 'u.name', 'u.language', 'c.first_name']);
+        } catch (Throwable) {
+            $this->lastReadFailed = true;
+            Log::warning('JFS identity child read failed.');
+
+            return [];
+        }
+
+        $matches = [];
+        foreach ($rows as $row) {
+            if (! JfsIdentityMatch::nameMatches((string) ($row->first_name ?? ''), $childName)) {
+                continue;
+            }
+            $matches[] = $this->identityRecord($row);
+        }
+
+        return $this->uniqueIdentityRecords($matches);
+    }
+
+    /**
+     * @param  list<array{id:int,name:?string,language:?string}>  $records
+     * @return list<array{id:int,name:?string,language:?string}>
+     */
+    private function uniqueIdentityRecords(array $records): array
+    {
+        $unique = [];
+        foreach ($records as $record) {
+            $unique[$record['id']] = $record;
+        }
+
+        return array_values($unique);
+    }
+
+    /**
+     * @return array{id:int,name:?string,language:?string}
+     */
+    private function identityRecord(object $row): array
+    {
+        $name = isset($row->name) ? trim((string) $row->name) : '';
+        $language = isset($row->language) ? trim((string) $row->language) : '';
+
+        return [
+            'id' => (int) $row->id,
+            'name' => $name !== '' ? $name : null,
+            'language' => $language !== '' ? $language : null,
+        ];
+    }
+
+    private function clientIdentityQuery(): \Illuminate\Database\Query\Builder
+    {
+        return DB::connection('jfs')
+            ->table('app_users')
+            ->where('role', 'client')
+            ->where(function ($query): void {
+                $query->whereNull('status')->orWhere('status', '!=', 'blocked');
+            });
     }
 
     /**
