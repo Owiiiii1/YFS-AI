@@ -10,7 +10,7 @@ Done on this host. Laravel is live with config cache. Paste new tool JSON from `
 
 ## Commit hash
 
-See the follow-up report commit on `main` for the implementation SHA (recorded immediately after this file is first committed).
+`ef2511b498947410cab074237a5e8d2a6a8b920c`
 
 ## Bitrix connection
 
