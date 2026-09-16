@@ -24,7 +24,7 @@ final class VoiceConversationInitiationService
      *     }
      * }
      */
-    public function payload(?string $callerId): array
+    public function payload(?string $callerId, ?string $conversationId = null): array
     {
         $contact = $this->directory->findOrCreateFromCallerId($callerId);
         $identity = $this->resolver->resolveByPhone($callerId);
@@ -32,6 +32,10 @@ final class VoiceConversationInitiationService
         if ($contact !== null) {
             $this->identityStore->remember($contact, $identity);
             $contact = $contact->fresh() ?? $contact;
+            if (trim((string) $conversationId) !== '') {
+                $this->directory->rememberConversationId($contact, $conversationId);
+                $contact = $contact->fresh() ?? $contact;
+            }
         }
 
         $language = VoiceSupportedLanguage::tryNormalize($contact?->preferred_language);

@@ -42,4 +42,32 @@ class VoiceContactDirectory
 
         return $contact->fresh();
     }
+
+    public function findByElevenLabsConversationId(?string $conversationId): ?VoiceContact
+    {
+        $conversationId = trim((string) $conversationId);
+        if ($conversationId === '') {
+            return null;
+        }
+
+        return VoiceContact::query()
+            ->where('metadata->elevenlabs_conversation_id', $conversationId)
+            ->first();
+    }
+
+    public function rememberConversationId(VoiceContact $contact, ?string $conversationId): void
+    {
+        $conversationId = trim((string) $conversationId);
+        if ($conversationId === '') {
+            return;
+        }
+
+        $metadata = is_array($contact->metadata) ? $contact->metadata : [];
+        if (($metadata['elevenlabs_conversation_id'] ?? null) === $conversationId) {
+            return;
+        }
+
+        $metadata['elevenlabs_conversation_id'] = $conversationId;
+        $contact->forceFill(['metadata' => $metadata])->save();
+    }
 }

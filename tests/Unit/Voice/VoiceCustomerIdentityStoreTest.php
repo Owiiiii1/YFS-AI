@@ -7,6 +7,7 @@ use App\Services\Voice\Identity\CustomerIdentityResult;
 use App\Services\Voice\Identity\VoiceCustomerIdentityStore;
 use Mockery;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Support\MemoryVoiceContact;
 use Tests\TestCase;
 
 class VoiceCustomerIdentityStoreTest extends TestCase
@@ -55,5 +56,98 @@ class VoiceCustomerIdentityStoreTest extends TestCase
             CustomerIdentityResult::unavailable('phone'),
         );
         $this->assertTrue(true);
+    }
+
+    #[Test]
+    public function bind_unique_writes_compact_identity(): void
+    {
+        $contact = new MemoryVoiceContact;
+        $contact->forceFill(['metadata' => []]);
+
+        $outcome = (new VoiceCustomerIdentityStore)->bindUnique(
+            $contact,
+            CustomerIdentityResult::unique('name', 44, 'Test Parent', 'ru'),
+        );
+
+        $this->assertSame(VoiceCustomerIdentityStore::BIND_BOUND, $outcome);
+        $stored = $contact->metadata['yfs_customer'];
+        $this->assertSame('unique', $stored['status']);
+        $this->assertSame(44, $stored['app_user_id']);
+        $this->assertSame('Test Parent', $stored['display_name']);
+        $this->assertSame('name', $stored['match_method']);
+        $this->assertArrayNotHasKey('phone', $stored);
+        $this->assertArrayNotHasKey('email', $stored);
+        $this->assertArrayNotHasKey('children', $stored);
+    }
+
+    #[Test]
+    public function bind_unique_does_not_replace_a_different_existing_unique_identity(): void
+    {
+        $contact = new MemoryVoiceContact;
+        $contact->forceFill([
+            'metadata' => [
+                'yfs_customer' => [
+                    'status' => 'unique',
+                    'app_user_id' => 10,
+                    'display_name' => 'Existing Parent',
+                    'match_method' => 'phone',
+                    'matched_at' => '2026-01-01T00:00:00Z',
+                ],
+            ],
+        ]);
+
+        $outcome = (new VoiceCustomerIdentityStore)->bindUnique(
+            $contact,
+            CustomerIdentityResult::unique('name', 99, 'Other Parent', 'en'),
+        );
+
+        $this->assertSame(VoiceCustomerIdentityStore::BIND_PRESERVED, $outcome);
+        $this->assertSame(10, $contact->metadata['yfs_customer']['app_user_id']);
+        $this->assertSame('Existing Parent', $contact->metadata['yfs_customer']['display_name']);
+    }
+
+    #[Test]
+    public function bind_unique_can_replace_when_caller_is_explicitly_on_behalf_of_another(): void
+    {
+        $contact = new MemoryVoiceContact;
+        $contact->forceFill([
+            'metadata' => [
+                'yfs_customer' => [
+                    'status' => 'unique',
+                    'app_user_id' => 10,
+                    'display_name' => 'Existing Parent',
+                    'match_method' => 'phone',
+                    'matched_at' => '2026-01-01T00:00:00Z',
+                ],
+            ],
+        ]);
+
+        $outcome = (new VoiceCustomerIdentityStore)->bindUnique(
+            $contact,
+            CustomerIdentityResult::unique('name', 99, 'Other Parent', 'en'),
+            true,
+        );
+
+        $this->assertSame(VoiceCustomerIdentityStore::BIND_BOUND, $outcome);
+        $this->assertSame(99, $contact->metadata['yfs_customer']['app_user_id']);
+        $this->assertSame('Other Parent', $contact->metadata['yfs_customer']['display_name']);
+    }
+
+    #[Test]
+    public function bind_unique_skips_non_unique_results(): void
+    {
+        $contact = new MemoryVoiceContact;
+        $contact->forceFill(['metadata' => ['keep' => true]]);
+        $store = new VoiceCustomerIdentityStore;
+
+        $this->assertSame(
+            VoiceCustomerIdentityStore::BIND_SKIPPED,
+            $store->bindUnique($contact, CustomerIdentityResult::ambiguous('name', 2)),
+        );
+        $this->assertSame(
+            VoiceCustomerIdentityStore::BIND_SKIPPED,
+            $store->bindUnique($contact, CustomerIdentityResult::notFound('name')),
+        );
+        $this->assertSame(['keep' => true], $contact->metadata);
     }
 }

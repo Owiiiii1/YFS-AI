@@ -11,14 +11,15 @@ Realtime production path is confirmed by a successful inbound telephone call.
 
 **Experimental / fallback:** ElevenLabs voice layer + YFS Custom LLM gateway + Gemini. Existing Custom LLM routing is unchanged and is not deleted.
 
-Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center has admin-editable Voice Assistant bot settings and a Voice Assistant call journal. `POST /api/voice/context` is the diagnostic prompt JSON. `POST /api/voice/elevenlabs/conversation-initiation` is the ElevenLabs Conversation Initiation adapter (prompt override + optional language). `POST /api/voice/elevenlabs/post-call` persists completed conversations. Customer matching beyond phone / YFS Core / Bitrix is not connected. This repo does not change ElevenLabs UI settings.
+Laravel Voice Orchestrator exists for a **test tool**, plus Voice Session Context and Prompt Orchestrator (synthetic preload). Call Center has admin-editable Voice Assistant bot settings and a Voice Assistant call journal. `POST /api/voice/context` is the diagnostic prompt JSON. `POST /api/voice/elevenlabs/conversation-initiation` is the ElevenLabs Conversation Initiation adapter (prompt override + optional language). `POST /api/voice/elevenlabs/post-call` persists completed conversations. Customer matching uses YFS Core phone identification on initiation plus `resolve_customer_identity` for spoken name/child hints. Bitrix is not connected. This repo does not change ElevenLabs UI settings.
 
 Related documents:
 
 - `docs/VOICE_ARCHITECTURE.md` — canonical architecture (Current / Planned / rejected)
 - `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md` — verbatim client Customer Support instruction (source of truth for Voice Assistant behaviour settings)
-- `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` — ElevenLabs UI fields for `get_public_shows` and `get_show_brands`
-- `docs/Voice/CUSTOMER_IDENTITY.md` — YFS Core caller identity on initiation
+- `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` — ElevenLabs UI fields for `get_public_shows`, `get_show_brands`, and `resolve_customer_identity`
+- `docs/Voice/ELEVENLABS_TOOL_FILLER.md` — native pre-tool speech / waiting phrases
+- `docs/Voice/CUSTOMER_IDENTITY.md` — YFS Core caller identity on initiation and spoken-name tool
 - `docs/PROJECT.md` — phase statuses
 - `docs/ARCHITECTURE.md` — high-level subsystem map
 - `docs/EXTERNAL_SERVICES.md` — vendor roles
@@ -41,7 +42,7 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 
 - Twilio phone transport into ElevenLabs (not first-party YFS Twilio)
 - ElevenLabs Native Agent: STT, turn-taking, interruptions, language/voices, TTS, hosted LLM, conversation + audio ownership
-- Authenticated Laravel webhook tools: `POST /api/voice/tools/test-context` (POC smoke-test; synthetic JSON) plus production read-only YFS Core tools `POST /api/voice/tools/public-shows` and `POST /api/voice/tools/show-brands`
+- Authenticated Laravel webhook tools: `POST /api/voice/tools/test-context` (POC smoke-test; synthetic JSON) plus production read-only YFS Core tools `POST /api/voice/tools/public-shows`, `POST /api/voice/tools/show-brands`, and `POST /api/voice/tools/resolve-customer-identity`
 - Confirmed via ElevenLabs Test Tool and a real voice conversation (POC). Live YFS Core tools are implemented in Laravel; register them in the ElevenLabs UI using `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
 
 **Experimental / fallback (existing Custom LLM routing, unchanged):**
@@ -54,7 +55,8 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 
 - `get_public_shows` → `POST /api/voice/tools/public-shows`
 - `get_show_brands` → `POST /api/voice/tools/show-brands`
-- Both wrap existing `JfsReadService`. Setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
+- `resolve_customer_identity` → `POST /api/voice/tools/resolve-customer-identity`
+- Live show tools wrap existing `JfsReadService`. Identity uses `CustomerIdentityResolver::resolveBySpokenHints()`. Setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` and `docs/Voice/CUSTOMER_IDENTITY.md`.
 
 **Planned (not implemented):**
 
@@ -204,14 +206,15 @@ Do not treat the POC test-tool results as live business data.
 
 - `get_public_shows` — `POST /api/voice/tools/public-shows` — `JfsReadService::publicEvents()`
 - `get_show_brands` — `POST /api/voice/tools/show-brands` — `JfsReadService::publicBrandLineups()`
+- `resolve_customer_identity` — `POST /api/voice/tools/resolve-customer-identity` — `CustomerIdentityResolver::resolveBySpokenHints()`
 
-ElevenLabs setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
+ElevenLabs setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`. Filler: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`. Identity contract: `docs/Voice/CUSTOMER_IDENTITY.md`.
 
 The Voice Agent must call a Laravel tool instead of guessing when information is dynamic or needs confirmation.
 
 Planned tool/service areas:
 
-- YFS Core customer lookup by phone/name/child (identity resolver **Current**; package/payment tools still Planned)
+- YFS Core customer lookup by phone/name/child (identity resolver and `resolve_customer_identity` tool **Current**; package/payment tools still Planned)
 - YFS participation / history
 - Bitrix24 contact / company
 - Bitrix deals

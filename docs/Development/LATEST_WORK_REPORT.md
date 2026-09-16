@@ -2,98 +2,106 @@
 
 ## Task
 
-First production Voice customer-identity stage: identify callers against YFS Core / JFS only. Bitrix24 not connected. No package/payment/rehearsal tools.
+Complete the production Voice identity loop: Native Agent webhook tool `resolve_customer_identity` for unknown/ambiguous/other-number callers, bind UNIQUE results to the current `VoiceContact`, and document native ElevenLabs filler / pre-tool speech. Bitrix24 not connected. No JFS writes. No new secrets.
 
 ## Status
 
-Done. Conversation initiation still returns the existing ElevenLabs `conversation_initiation_client_data` contract. Unique JFS phone matches store a compact identity on `voice_contacts.metadata` and add a runtime CALLER CONTEXT block. Ambiguous matches are not auto-selected.
+Done. Laravel endpoint is live. ElevenLabs dashboard was **not** changed from this repo; paste JSON from `docs/Voice/CUSTOMER_IDENTITY.md` and filler steps from `docs/Voice/ELEVENLABS_TOOL_FILLER.md`.
 
-## What was implemented
+## Endpoint
 
-```text
-caller_id
-  → VoiceContactDirectory
-  → CustomerIdentityResolver::resolveByPhone()
-  → JfsReadService identity SELECTs
-  → unique | ambiguous | not_found | source_unavailable
-```
+`POST https://ai.youngfashionshow.com/api/voice/tools/resolve-customer-identity`
 
-### Identity contract
+Auth: existing `AuthenticateElevenLabsTool` / `ELEVENLABS_TOOL_TOKEN`. Same secret as `get_public_shows` / `get_show_brands`. Do not create a new token.
 
-| status | Meaning |
-| --- | --- |
-| `unique` | Exactly one client `app_users` row (`role=client`, not blocked) |
-| `ambiguous` | More than one client; no `yfs_app_user_id` / display name returned to the agent |
-| `not_found` | Zero clients |
-| `source_unavailable` | JFS unconfigured or query failed; initiation still 200 |
+## Request / response contract
 
-Unique fields (Laravel-side): `yfs_app_user_id`, `display_name`, `preferredLanguage` from `app_users.language` when present. Phone, email, children, payments are not returned from identity lookups.
+LLM body: `name` and `child_name` (optional strings; at least one required), optional `on_behalf_of` boolean.
 
-### Phone matching
+Trusted session fields (ElevenLabs system dynamic variables only; never LLM `phone` / `caller_id`):
 
-- Digit-only comparison against masked JFS `app_users.phone`
-- 8–15 digits
-- US 10-digit ↔ 11-digit with leading `1` only
-- Phone is not treated as unique
+- `system__caller_id`
+- `system__conversation_id`
 
-### Name / child (resolver ready, no ElevenLabs tool)
+Lookup always uses `CustomerIdentityResolver::resolveBySpokenHints()`. Matching logic was not duplicated.
 
-- `findClientsByName` / `resolveByName`: whole-word match on `app_users.name`
-- `findClientsByChildName` / `resolveByChildName`: match `children.first_name`, return parent identity rows only (no child names)
-- `resolveBySpokenHints($name, $childName)` for a later `resolve_customer_identity` tool. No new public webhook.
+| Case | `ok` | `status` | `next_action` | Extra |
+| --- | --- | --- | --- | --- |
+| Unique | true | `unique` | `identified` | `customer.display_name` only |
+| Unique, existing different identity kept | true | `unique` | `already_identified` | existing `display_name` |
+| Ambiguous, no child | true | `ambiguous` | `ask_child_name` | none |
+| Ambiguous after child | true | `ambiguous` | `ask_additional_identifier` | none |
+| Not found | true | `not_found` | `ask_again_or_continue_without_identity` | none |
+| JFS down | false | `source_unavailable` | `continue_without_identity` | none |
+| Missing name and child | false | `invalid_request` | `ask_name` | none |
+| Bad/missing Bearer | HTTP 401 | — | — | `{"message":"Unauthorized"}` |
 
-### VoiceContact metadata (`yfs_customer`)
+Never in the ElevenLabs JSON: phone, email, internal ids, candidate lists, children lists, payments, CRM dumps, secrets.
 
-Stored when status is not `source_unavailable`:
+## Binding strategy
 
-- unique: `status`, `match_method`, `matched_at`, `app_user_id`, `display_name`
-- ambiguous: `status`, `match_method`, `matched_at`, `candidate_count`
-- not_found: `status`, `match_method`, `matched_at`
+UNIQUE results persist compact `metadata.yfs_customer` via existing `VoiceCustomerIdentityStore` (`bindUnique`) when a trusted session identifier resolves a `VoiceContact`:
 
-**Not stored:** phones, emails, children lists, payments, tickets, contracts, photos, stage plans, secrets.
+1. `system__conversation_id` → contact that stored that id at initiation
+2. else `system__caller_id` → `VoiceContactDirectory::findOrCreateFromCallerId`
 
-`source_unavailable` does not overwrite existing metadata.
+Initiation still uses `caller_id`. When ElevenLabs also sends `conversation_id`, it is stored on `voice_contacts.metadata.elevenlabs_conversation_id`. Initiation JSON contract is unchanged.
 
-### Conversation initiation
+If no trusted session id is present, lookup still returns status to the agent; persistence is skipped.
 
-`POST /api/voice/elevenlabs/conversation-initiation` top-level JSON unchanged: `type` + `conversation_config_override.agent.prompt` (+ `language` when en/ru/uk is known).
+The calling number is not written to YFS/JFS. `app_users.phone` is never updated.
 
-Stored `voice_contacts.preferred_language` still wins. Unique JFS language is used only when Voice has no stored preference. JFS failure does not fail the call. `calls_count` is still not incremented here.
+Ambiguous / not_found do not bind and do not create a fake unique identity. `source_unavailable` does not destroy an existing unique identity.
 
-### Prompt
+## Identity override safety
 
-`VoiceAssistantPromptBuilder` wrapper **v4**, section **E. CALLER IDENTITY**. Runtime CALLER CONTEXT is not hashed into `version`. Policy section bodies were not rewritten.
+- Initiation UNIQUE identity is current for this caller.
+- Spoken resolution is for unknown / ambiguous / other-number personal questions.
+- A later unique spoken match for a **different** `app_user_id` does not silently replace the stored identity (`next_action: already_identified`).
+- Replacement only when the caller explicitly says they are calling for another registered parent/family (`on_behalf_of: true`).
+- Ordinary mention of a name is not a reason to call the tool or switch identity (wrapper v5).
 
-Public questions still go through `get_public_shows` / `get_show_brands` without identification.
+## Exact ElevenLabs manual setup
 
-## Files changed
+This repo does not change the dashboard.
 
-- `app/Services/Jfs/JfsReadService.php`
-- `app/Services/Jfs/JfsIdentityMatch.php`
-- `app/Services/Voice/Identity/CustomerIdentityResult.php`
-- `app/Services/Voice/Identity/CustomerIdentityResolver.php`
-- `app/Services/Voice/Identity/VoiceCustomerIdentityStore.php`
-- `app/Services/Voice/Identity/VoiceConversationInitiationService.php`
-- `app/Http/Controllers/Api/ElevenLabsConversationInitiationController.php`
-- `app/Services/Voice/Prompt/VoiceAssistantPromptBuilder.php`
-- tests (identity unit tests, initiation service tests, prompt v4, FakeJfsReadService identity methods)
-- `docs/Voice/CUSTOMER_IDENTITY.md`
-- `docs/VOICE_ARCHITECTURE.md`, `docs/VOICE_ASSISTANT.md`, `docs/ARCHITECTURE.md`, `docs/PROJECT.md`
-- `docs/Development/LATEST_WORK_REPORT.md`
+1. Agents → YFS Voice Assistant → Tools → create webhook tool (or JSON editor).
+2. Paste the full JSON in `docs/Voice/CUSTOMER_IDENTITY.md` (includes `response_timeout_secs: 20`).
+3. Set Authorization to the **existing** workspace secret already used by `get_public_shows` (replace `secret_id` placeholder). Do not create a new secret.
+4. Confirm `system__caller_id` and `system__conversation_id` are **dynamic variables**, not LLM description fields.
+5. Assign the tool to the agent. Do not add an LLM `phone` parameter.
+
+Filler / waiting speech (2–3 minutes): `docs/Voice/ELEVENLABS_TOOL_FILLER.md`
+
+- `resolve_customer_identity`: `pre_tool_speech: force`, optional `tool_call_sound: typing` with `auto`
+- `get_public_shows` / `get_show_brands`: `pre_tool_speech: auto` (do not force filler on instant lookups)
+- Per-tool, not agent-wide
+- Phrases follow the current conversation language; examples in wrapper v5 (RU/EN/UK)
+- Not implemented in Laravel, not an extra LLM call, no sleep
+
+## Prompt
+
+`VoiceAssistantPromptBuilder` wrapper **v5**, section **E. CALLER IDENTITY**:
+
+- Public questions do not require identity and must not call this tool
+- Unique caller is not re-asked for a name
+- Unknown personal caller asks name, then the tool
+- Ambiguous asks child name, then the tool again
+- not_found / source_unavailable are not automatic escalation
 
 ## Tests
 
 PHPUnit (no SQLite install; DB feature tests skip without `pdo_sqlite`):
 
-- Phone unique / unknown / duplicate → ambiguous
-- Masked JFS phone vs 10/11-digit US caller
-- JFS unavailable ≠ not_found
-- Name unique / ambiguous / unknown
-- Child resolves parent; shared child name → ambiguous; unknown child
-- Initiation contract keys unchanged; ambiguous does not name clients; JFS failure still 200; preferred_language still works
-- Existing `get_public_shows`, `get_show_brands`, POC test-context, post-call language tests remain green
+TOOL: unique / ambiguous / not_found / name+child resolves / still ambiguous / source_unavailable / missing name+child / auth 401
 
-Run: 71 passed, 13 skipped (sqlite).
+BINDING: unique binds when trusted contact exists; ambiguous does not bind; not_found does not create fake identity; source_unavailable does not destroy existing unique; existing unique is not replaced
+
+PROMPT: public questions skip identity; unknown asks name; ambiguous asks child; unique is not re-identified
+
+REGRESSION: `get_public_shows`, `get_show_brands`, conversation initiation, preferred language, post-call language tests remain green
+
+Voice-related run: 128 passed, 20 skipped (sqlite).
 
 ## Production smoke (no PII printed)
 
@@ -101,26 +109,24 @@ Run: 71 passed, 13 skipped (sqlite).
 
 | Check | Result |
 | --- | --- |
-| Unauthorized initiation | HTTP 401 |
-| Authorized initiation | HTTP 200, keys `type` + `conversation_config_override` |
-| Prompt | Contains E. CALLER IDENTITY, CALLER CONTEXT, live show tools |
+| Unauthorized identity tool | HTTP 401 |
+| Wrong token | HTTP 401 |
+| Empty body | HTTP 200, `invalid_request` / `ask_name` |
+| Nonsense name | HTTP 200, `not_found`; no customer/phone/email/id keys |
 | `get_public_shows` | HTTP 200, `ok: true`, count 5 |
 | `get_show_brands` | HTTP 200, `ok: true` |
-| Resolver nonsense phone/name/child | `not_found` |
-| JFS configured | true; `lastReadFailed` false after those lookups |
-| Live phone-group counts (digits only, no numbers printed) | 517 unique groups, 129 ambiguous groups (276 rows) — matcher can return both unique and ambiguous |
-
-No JFS INSERT/UPDATE/DELETE. Bitrix not touched.
+| POC `test-context` | HTTP 200 |
+| Conversation initiation | HTTP 200, keys `type` + `conversation_config_override` |
+| JFS | configured; `lastReadFailed` false after lookups |
 
 ## Safety
 
-- JFS: read-only SELECTs
-- Bitrix: not used, no credentials, no REST
-- Instagram Assistant behavior unchanged except shared `JfsReadService` additive identity methods
-- Existing public Voice tools unchanged
-- Node Custom LLM, Twilio, ElevenLabs dashboard unchanged
-- Logs: `voice.identity.resolved` with status / match_method / match_count only
+- JFS: read-only SELECTs. No INSERT/UPDATE/DELETE.
+- Bitrix: not used, no credentials, no REST, untouched
+- Existing Voice tools `get_public_shows` and `get_show_brands` unchanged (new route/controller only)
+- Instagram / JFS Core write path / Twilio / Node voice-runtime / ElevenLabs dashboard unchanged
+- Logs: `voice.tools.resolve_customer_identity` with `ok` / `status` / `match_method` / `match_count` / `bind` only
 
 ## Commit hash
 
-`4ba14c8717de493b722a517471f553b66340ddef`
+pending

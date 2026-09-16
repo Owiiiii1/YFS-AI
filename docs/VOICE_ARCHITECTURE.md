@@ -217,10 +217,9 @@ Current tools:
 | `get_current_yfs_test_context` | **Current**. Live call confirmed for tool execution. | Read-only synthetic test payload. Metadata: lookup / short / filler_enabled / read_only / source=yfs_ai_test. Native: `POST /api/voice/tools/test-context`. |
 | `get_public_shows` | **Current**. Laravel Native Agent webhook. | Read-only `JfsReadService::publicEvents()`. `POST /api/voice/tools/public-shows`. |
 | `get_show_brands` | **Current**. Laravel Native Agent webhook. | Read-only `JfsReadService::publicBrandLineups()`. `POST /api/voice/tools/show-brands`. Public lineup only. |
+| `resolve_customer_identity` | **Current**. Laravel Native Agent webhook. | Read-only `CustomerIdentityResolver::resolveBySpokenHints()`. `POST /api/voice/tools/resolve-customer-identity`. Binds UNIQUE identity to the current `VoiceContact` when a trusted ElevenLabs session id is present. |
 
 Future tools/services (still **Planned**, not live on a production call):
-
-- YFS Core customer lookup
 - YFS participation / history
 - Bitrix24 contact / company
 - Bitrix deals
@@ -341,14 +340,13 @@ The previous “native LLM is not the business brain” decision is superseded. 
 
 The following are **not** current:
 
-- YFS Core Native Agent identity tool (`resolve_customer_identity`) — Laravel resolver exists; ElevenLabs tool is not registered
 - YFS Core participant / package / payment Voice tools
 - Bitrix24 Voice tools / connectors (not connected yet)
-- production business tools beyond public shows, public brand lineups, and the Native Agent smoke-test webhook
+- production business tools beyond public shows, public brand lineups, spoken identity, and the Native Agent smoke-test webhook
 - full production cutover of every inbound number onto Native Agent (existing Custom LLM routing is unchanged fallback)
 - post-call AI analysis / Telegram / audio archive for calls
 - Voice admin Follow-ups
-- YFS Core / Bitrix customer matching on the initiation webhook
+- Bitrix24 customer matching on the initiation webhook
 - ElevenLabs UI webhook URLs (backend adapters exist; this repo does not change the agent settings)
 - other planned `voice_*` tables (`voice_followups`, `voice_agent_settings`). `voice_assistant_settings`, `voice_contacts`, and `voice_calls` exist.
 
@@ -409,8 +407,9 @@ Production read-only YFS Core tools (same auth, not the POC payload):
 
 - `POST /api/voice/tools/public-shows` — `get_public_shows`
 - `POST /api/voice/tools/show-brands` — `get_show_brands`
+- `POST /api/voice/tools/resolve-customer-identity` — `resolve_customer_identity`
 
-They wrap `JfsReadService` and return `source: yfs_core` JSON. ElevenLabs UI fields: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
+They wrap `JfsReadService` (shows/brands/identity reads) and return structured JSON without secrets. ElevenLabs UI fields: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`, identity contract: `docs/Voice/CUSTOMER_IDENTITY.md`, filler: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`.
 
 ## 14. Native Agent conversation context contract
 
@@ -435,12 +434,12 @@ JSON:
 ```json
 {
   "prompt": "...assembled prompt...",
-  "version": "v4-<sha256>",
+  "version": "v5-<sha256>",
   "generated_at": "<ISO-8601 UTC>"
 }
 ```
 
-The assembled prompt starts with immutable runtime decision rules: A KNOWN POLICY FACT, B MISSING DYNAMIC FACT, C HUMAN REQUIRED, D LIVE SHOW TOOLS (`get_public_shows` / `get_show_brands`), E CALLER IDENTITY. Policy section bodies are not rewritten. `version` includes wrapper version `v4`. Unique YFS phone matches add a runtime CALLER CONTEXT block (not part of the version hash).
+The assembled prompt starts with immutable runtime decision rules: A KNOWN POLICY FACT, B MISSING DYNAMIC FACT, C HUMAN REQUIRED, D LIVE SHOW TOOLS (`get_public_shows` / `get_show_brands`), E CALLER IDENTITY (`resolve_customer_identity` when a personal fact is needed and the caller is not uniquely identified). Policy section bodies are not rewritten. `version` includes wrapper version `v5`. Unique YFS phone matches add a runtime CALLER CONTEXT block (not part of the version hash).
 
 **Current (backend adapter).** This repo does **not** change ElevenLabs agent settings. The operator pastes the URL and header into ElevenLabs.
 

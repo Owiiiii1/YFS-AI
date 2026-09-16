@@ -115,7 +115,7 @@ Public namespace: `/voice-engine/` → `127.0.0.1:3101`.
 Incoming model label: `yfs-bot-runtime`. Actual provider/model come from Laravel `bot_runtime`.  
 Laravel `location /` is unchanged. Twilio routing is not owned by YFS.
 
-**Current:** first real read-only YFS Core Voice tools (`get_public_shows`, `get_show_brands`) wrapping `JfsReadService`. Bitrix not connected.
+**Current:** first real read-only YFS Core Voice tools (`get_public_shows`, `get_show_brands`, `resolve_customer_identity`) wrapping `JfsReadService`. Bitrix not connected.
 
 Speech Engine WebSocket is experimental / legacy, not production routing.
 

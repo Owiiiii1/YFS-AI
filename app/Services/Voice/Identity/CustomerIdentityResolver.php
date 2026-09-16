@@ -27,7 +27,7 @@ class CustomerIdentityResolver
     }
 
     /**
-     * Future Native Agent tool input: spoken parent name plus optional child name.
+     * Native Agent tool input: spoken parent name plus optional child name.
      */
     public function resolveBySpokenHints(?string $name, ?string $childName = null): CustomerIdentityResult
     {

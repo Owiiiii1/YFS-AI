@@ -82,6 +82,45 @@ class VoiceConversationInitiationServiceTest extends TestCase
         $this->assertStringContainsString('Use the app first.', $prompt);
     }
 
+    #[Test]
+    public function conversation_id_is_remembered_on_the_current_contact(): void
+    {
+        $identity = CustomerIdentityResult::unique('phone', 99, 'Test Parent', 'ru');
+        $contact = Mockery::mock(VoiceContact::class);
+        $contact->shouldReceive('getAttribute')->with('preferred_language')->andReturn(null);
+        $contact->shouldReceive('fresh')->andReturnSelf();
+        $contact->shouldIgnoreMissing();
+
+        $directory = Mockery::mock(VoiceContactDirectory::class);
+        $directory->shouldReceive('findOrCreateFromCallerId')->once()->andReturn($contact);
+        $directory->shouldReceive('rememberConversationId')->once()->with($contact, 'conv_live');
+
+        $resolver = Mockery::mock(CustomerIdentityResolver::class, [new FakeJfsReadService])->makePartial();
+        $resolver->shouldReceive('resolveByPhone')->once()->andReturn($identity);
+
+        $store = Mockery::mock(VoiceCustomerIdentityStore::class)->makePartial();
+        $store->shouldReceive('remember')->once();
+
+        $builder = Mockery::mock(VoiceAssistantPromptBuilder::class)->makePartial();
+        $builder->shouldReceive('build')->once()->andReturn(
+            (new VoiceAssistantPromptBuilder)->assemble([[
+                'key' => 'general',
+                'title' => 'General rules',
+                'instructions' => 'Use the app first.',
+                'sort_order' => 1,
+            ]], null, $identity),
+        );
+
+        $payload = (new VoiceConversationInitiationService(
+            $directory,
+            $resolver,
+            $store,
+            $builder,
+        ))->payload('+15551234567', 'conv_live');
+
+        $this->assertSame('conversation_initiation_client_data', $payload['type']);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -94,6 +133,7 @@ class VoiceConversationInitiationServiceTest extends TestCase
 
         $directory = Mockery::mock(VoiceContactDirectory::class);
         $directory->shouldReceive('findOrCreateFromCallerId')->once()->andReturn($contact);
+        $directory->shouldNotReceive('rememberConversationId');
 
         $resolver = Mockery::mock(CustomerIdentityResolver::class, [new FakeJfsReadService])->makePartial();
         $resolver->shouldReceive('resolveByPhone')->once()->andReturn($identity);

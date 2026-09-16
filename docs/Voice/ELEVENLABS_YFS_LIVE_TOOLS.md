@@ -1,12 +1,12 @@
 # ElevenLabs Native Agent — YFS live webhook tools
 
-Manual setup for two production webhook tools on the ElevenLabs Native Agent.
+Manual setup for production webhook tools on the ElevenLabs Native Agent.
 
 This repo does not change the ElevenLabs UI. Paste the fields below into ElevenLabs.
 
 Do **not** put token values, database credentials, or other secrets in this file.
 
-Auth for both tools uses the **existing** ElevenLabs webhook secret already configured for YFS AI (`ELEVENLABS_TOOL_TOKEN` in Laravel). In ElevenLabs, reuse that same secret as a Bearer token. Do not create a new token.
+Auth for these tools uses the **existing** ElevenLabs webhook secret already configured for YFS AI (`ELEVENLABS_TOOL_TOKEN` in Laravel). In ElevenLabs, reuse that same secret as a Bearer token. Do not create a new token.
 
 Header:
 
@@ -178,8 +178,27 @@ This tool must **not** be used for personal brand assignment.
 
 ---
 
+## Tool 3 — `resolve_customer_identity`
+
+Full contract, override safety, binding, and the complete dashboard JSON (including `response_timeout_secs` and `pre_tool_speech`): `docs/Voice/CUSTOMER_IDENTITY.md`.
+
+Native waiting speech: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`.
+
+| Field | Value |
+| --- | --- |
+| Tool name | `resolve_customer_identity` |
+| Method | `POST` |
+| URL | `https://ai.youngfashionshow.com/api/voice/tools/resolve-customer-identity` |
+| Auth | Reuse the existing Authorization secret (`ELEVENLABS_TOOL_TOKEN`). Do not create a new secret. |
+| `response_timeout_secs` | `20` |
+| `pre_tool_speech` | `force` |
+
+Do not add an LLM `phone` parameter. `system__caller_id` and `system__conversation_id` must be ElevenLabs **dynamic variables**.
+
+---
+
 ## What not to configure
 
 - Do not point ElevenLabs at the JFS database.
-- Do not add participant, phone, rehearsal, ticket, or package tools from this document.
+- Do not add participant, rehearsal, ticket, or package tools from this document.
 - Keep `POST /api/voice/tools/test-context` as the POC smoke tool. It is not live show data.
