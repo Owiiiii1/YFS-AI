@@ -129,4 +129,4 @@ Voice-related run: 128 passed, 20 skipped (sqlite).
 
 ## Commit hash
 
-pending
+`19051289ff7e77a175ced1dfd32d60faabf75dad`
