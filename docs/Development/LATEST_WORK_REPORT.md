@@ -10,7 +10,7 @@ Done. Audit-only. Production code, Meta App, webhook subscriptions, Instagram co
 
 ## Commit hash
 
-See the follow-up report commit on `main` for the implementation SHA (recorded immediately after this file is first committed).
+`d98de6ce2e737fc8e60b1f25f04136506d31744b`
 
 ## Verdict
 
