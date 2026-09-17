@@ -100,7 +100,9 @@ Phone may be zero, unique, or ambiguous. It is not globally unique.
 
 `crm.contact.list` with `%NAME` on the spoken string. If that result is not unique and the spoken string has at least two words, a second list uses `%NAME` + `%LAST_NAME`. Totals above 8 are treated as ambiguous without fetching ids.
 
-Child hint (extended / remaining budget only): `%UF_CRM_1748955762209`.
+If the spoken string is Cyrillic and the first controlled lookup is `not_found`, Laravel issues **one** extra `crm.contact.list` using a single Latin form (`IdentityNameMatcher::primaryLatin`). No additional REST methods, no `FIND`, no `%PHONE`, no CRM dumps. The extra query is skipped when the original string is already Latin, unique, ambiguous, or unavailable.
+
+Child hint (extended / remaining budget only): `%UF_CRM_1748955762209`, with the same optional one-shot Latin retry on a Cyrillic miss.
 
 Bitrix name match never becomes YFS unique by itself.
 

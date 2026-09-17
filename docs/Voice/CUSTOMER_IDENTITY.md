@@ -41,7 +41,7 @@ Initiation (caller_id)
 Spoken identity (personal question, unknown / ambiguous / other number)
   → agent asks name (then child name if needed)
   → POST /api/voice/tools/resolve-customer-identity
-  → CustomerIdentityResolver::resolveBySpokenHintsFast(name, child_name)
+  → CustomerIdentityResolver::resolveBySpokenHintsFast(name, child_name, trusted session phone)
   → UNIQUE binds compact identity onto the current VoiceContact when a trusted session id is present
   → if still not unique and a personal fact is still needed → start_extended_identity_search
 ```
@@ -69,10 +69,26 @@ Bitrix phone lookup, when used, is exact (`crm.duplicate.findbycomm` type=PHONE,
 
 Used by `CustomerIdentityResolver::resolveByName()`, `resolveByChildName()`, and `resolveBySpokenHints()`. The Native Agent webhook `resolve_customer_identity` calls `resolveBySpokenHintsFast` (YFS first, then optional Bitrix name → email → YFS). Matching logic is not duplicated in the controller.
 
-- Parent: whole-word match on `app_users.name` (order-insensitive). `"Ann"` does not match `"Anna"`.
-- Child: whole-word match on `children.first_name`; returns **parent** identity rows only. Child names are not returned.
+- Parent exact: whole-word match on `app_users.name` after Unicode/case/hyphen/apostrophe folding (order-insensitive). `"Ann"` does not match `"Anna"`.
+- Parent multilingual: the same word alignment over transliteration keys (UA/RU Cyrillic ↔ Latin) plus a small alias list for language forms transliteration cannot produce (`Julia`/`Yuliia`, `Alexander`/`Oleksandr`, …). This pool is **candidate-only**.
+- Child: the same exact-then-variant rules on `children.first_name`; returns **parent** identity rows only. Child names are not returned.
 - Several parents → `ambiguous`. Do not auto-pick. Do not list names to the agent.
 - A Bitrix name match is only a candidate for email linkage. It does not confirm a YFS customer.
+
+Multilingual / fuzzy name similarity is **never** enough for `unique` by itself. Fast YFS still scans the in-memory client list (~800 rows); it is not a heavy fuzzy search. A single variant-only candidate stays `ambiguous` (`ask_child_name`) unless another already-available signal confirms it:
+
+| Extra evidence | Can confirm `unique` |
+| --- | --- |
+| Exact Latin/whole-word YFS name (or exact child name) | Yes — existing YFS match |
+| Parent name **and** child name both match the same parent (exact or variant) | Yes |
+| Trusted `VoiceContact.phone_normalized` (ElevenLabs system caller id, never LLM) intersects one candidate | Yes |
+| Bitrix controlled name/phone lookup → emails inside Laravel → one YFS `findClientByEmail` | Yes |
+
+If several multilingual candidates remain, or the only hit is a variant name without those signals, the status is `ambiguous` or `not_found`. Similar but distinct names (`Ann`/`Anna`, `Евгения`/`Евгений`, `Юлия`/`Юліана`) must not collapse into one identity.
+
+Trusted phone is passed into `resolveBySpokenHints` only from the current Voice session. It corroborates a variant candidate; it does not replace an exact unique name (so `on_behalf_of` still works).
+
+A Bitrix contact is never a YFS identity by itself.
 
 ---
 

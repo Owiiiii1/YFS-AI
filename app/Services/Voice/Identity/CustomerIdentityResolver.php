@@ -33,52 +33,72 @@ class CustomerIdentityResolver
 
     /**
      * Native Agent tool input: spoken parent name plus optional child name.
+     * Optional $phone is a trusted VoiceContact number, never LLM input.
      */
-    public function resolveBySpokenHints(?string $name, ?string $childName = null): CustomerIdentityResult
+    public function resolveBySpokenHints(?string $name, ?string $childName = null, ?string $phone = null): CustomerIdentityResult
     {
         $name = trim((string) $name);
         $childName = trim((string) $childName);
+        $phone = trim((string) $phone);
 
         if ($name === '' && $childName === '') {
             return CustomerIdentityResult::notFound('name');
         }
 
-        if ($name !== '' && $childName === '') {
-            return $this->resolveByName($name);
-        }
-
-        if ($name === '') {
-            return $this->resolveByChildName($childName);
-        }
-
-        $byName = $this->jfs->findClientsByName($name);
-        if ($this->jfs->lastReadFailed()) {
-            $this->logStatus(CustomerIdentityResult::unavailable('name'));
-
-            return CustomerIdentityResult::unavailable('name');
-        }
-
-        $byChild = $this->jfs->findClientsByChildName($childName);
-        if ($this->jfs->lastReadFailed()) {
-            $this->logStatus(CustomerIdentityResult::unavailable('child_name'));
-
-            return CustomerIdentityResult::unavailable('child_name');
-        }
-
-        $childIds = [];
-        foreach ($byChild as $row) {
-            $childIds[(int) $row['id']] = $row;
-        }
-
-        $intersected = [];
-        foreach ($byName as $row) {
-            $id = (int) $row['id'];
-            if (isset($childIds[$id])) {
-                $intersected[] = $row;
+        $phoneClients = [];
+        if ($phone !== '') {
+            $phoneClients = $this->jfs->findClientsByPhoneDigits($phone);
+            if ($this->jfs->lastReadFailed()) {
+                $phoneClients = [];
             }
         }
 
-        return $this->fromLoaded($intersected, 'name_and_child');
+        $namePool = [];
+        $nameExact = false;
+        $nameSearched = $name !== '';
+        if ($nameSearched) {
+            $loaded = $this->loadNamePool($name);
+            if ($loaded === null) {
+                return CustomerIdentityResult::unavailable('name');
+            }
+            [$namePool, $nameExact] = $loaded;
+        }
+
+        $childPool = [];
+        $childExact = false;
+        $childSearched = $childName !== '';
+        if ($childSearched) {
+            $loaded = $this->loadChildPool($childName);
+            if ($loaded === null) {
+                return CustomerIdentityResult::unavailable('child_name');
+            }
+            [$childPool, $childExact] = $loaded;
+        }
+
+        if ($nameSearched && $childSearched) {
+            return $this->finalizeSpoken(
+                $this->intersectById($namePool, $childPool),
+                'name_and_child',
+                $namePool !== [] && $childPool !== [],
+                $phoneClients,
+            );
+        }
+
+        if ($nameSearched) {
+            return $this->finalizeSpoken(
+                $namePool,
+                $nameExact ? 'name' : 'name_variant',
+                $nameExact,
+                $phoneClients,
+            );
+        }
+
+        return $this->finalizeSpoken(
+            $childPool,
+            $childExact ? 'child_name' : 'child_name_variant',
+            $childExact,
+            $phoneClients,
+        );
     }
 
     public function resolveByPhoneFast(?string $phone, ?int $budgetMs = null): CustomerIdentityResult
@@ -98,10 +118,10 @@ class CustomerIdentityResolver
         return $linked ?? $yfs;
     }
 
-    public function resolveBySpokenHintsFast(?string $name, ?string $childName = null, ?int $budgetMs = null): CustomerIdentityResult
+    public function resolveBySpokenHintsFast(?string $name, ?string $childName = null, ?int $budgetMs = null, ?string $phone = null): CustomerIdentityResult
     {
         $started = hrtime(true);
-        $yfs = $this->resolveBySpokenHints($name, $childName);
+        $yfs = $this->resolveBySpokenHints($name, $childName, $phone);
         if ($yfs->isUnique() || $yfs->status === CustomerIdentityResult::SOURCE_UNAVAILABLE) {
             return $yfs;
         }
@@ -202,6 +222,133 @@ class CustomerIdentityResolver
         }
 
         return $linked;
+    }
+
+    /**
+     * @return array{0: list<array{id:int,name:?string,language:?string}>, 1: bool}|null
+     */
+    private function loadNamePool(string $name): ?array
+    {
+        $exact = $this->jfs->findClientsByName($name);
+        if ($this->jfs->lastReadFailed()) {
+            $this->logStatus(CustomerIdentityResult::unavailable('name'));
+
+            return null;
+        }
+        if ($exact !== []) {
+            return [$exact, true];
+        }
+
+        $variants = $this->jfs->findClientsByNameVariants($name);
+        if ($this->jfs->lastReadFailed()) {
+            $this->logStatus(CustomerIdentityResult::unavailable('name'));
+
+            return null;
+        }
+
+        return [$variants, false];
+    }
+
+    /**
+     * @return array{0: list<array{id:int,name:?string,language:?string}>, 1: bool}|null
+     */
+    private function loadChildPool(string $childName): ?array
+    {
+        $exact = $this->jfs->findClientsByChildName($childName);
+        if ($this->jfs->lastReadFailed()) {
+            $this->logStatus(CustomerIdentityResult::unavailable('child_name'));
+
+            return null;
+        }
+        if ($exact !== []) {
+            return [$exact, true];
+        }
+
+        $variants = $this->jfs->findClientsByChildNameVariants($childName);
+        if ($this->jfs->lastReadFailed()) {
+            $this->logStatus(CustomerIdentityResult::unavailable('child_name'));
+
+            return null;
+        }
+
+        return [$variants, false];
+    }
+
+    /**
+     * @param  list<array{id:int,name:?string,language:?string}>  $pool
+     * @param  list<array{id:int,name:?string,language:?string}>  $phoneClients
+     */
+    private function finalizeSpoken(array $pool, string $method, bool $allowUnique, array $phoneClients): CustomerIdentityResult
+    {
+        if ($phoneClients !== []) {
+            $withPhone = $this->intersectById($pool, $phoneClients);
+            $phoneCount = count($this->indexById($withPhone));
+            if ($phoneCount === 1) {
+                $phoneMethod = match (true) {
+                    $method === 'name_and_child' => 'name_and_child_and_phone',
+                    str_starts_with($method, 'child_') => 'child_name_and_phone',
+                    default => 'name_and_phone',
+                };
+
+                return $this->fromLoaded($withPhone, $phoneMethod);
+            }
+            if ($phoneCount > 1) {
+                return $this->fromLoaded($withPhone, $method);
+            }
+        }
+
+        if (! $allowUnique) {
+            $count = count($this->indexById($pool));
+            if ($count === 0) {
+                return $this->fromLoaded([], $method);
+            }
+            if ($count === 1) {
+                $result = CustomerIdentityResult::ambiguous($method, 1);
+                $this->logStatus($result);
+
+                return $result;
+            }
+
+            return $this->fromLoaded($pool, $method);
+        }
+
+        return $this->fromLoaded($pool, $method);
+    }
+
+    /**
+     * @param  list<array{id:int,name:?string,language:?string}>  $left
+     * @param  list<array{id:int,name:?string,language:?string}>  $right
+     * @return list<array{id:int,name:?string,language:?string}>
+     */
+    private function intersectById(array $left, array $right): array
+    {
+        $keep = $this->indexById($right);
+        $intersected = [];
+        foreach ($left as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id > 0 && isset($keep[$id])) {
+                $intersected[] = $row;
+            }
+        }
+
+        return $intersected;
+    }
+
+    /**
+     * @param  list<array{id:int,name:?string,language:?string}>  $rows
+     * @return array<int, array{id:int,name:?string,language:?string}>
+     */
+    private function indexById(array $rows): array
+    {
+        $unique = [];
+        foreach ($rows as $row) {
+            $id = (int) ($row['id'] ?? 0);
+            if ($id > 0) {
+                $unique[$id] = $row;
+            }
+        }
+
+        return $unique;
     }
 
     private function remaining(int $started, int $budgetMs): int

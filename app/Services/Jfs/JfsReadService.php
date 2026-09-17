@@ -3,6 +3,7 @@
 namespace App\Services\Jfs;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -244,6 +245,46 @@ class JfsReadService
     }
 
     /**
+     * Transliteration / alias candidates. Exact whole-word hits are excluded
+     * so callers can treat this pool as variant-only evidence.
+     *
+     * @return list<array{id:int,name:?string,language:?string}>
+     */
+    public function findClientsByNameVariants(string $name): array
+    {
+        $this->lastReadFailed = false;
+        if (JfsIdentityMatch::words($name) === []) {
+            return [];
+        }
+
+        if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
+            return [];
+        }
+
+        try {
+            $rows = $this->clientIdentityQuery()->get(['id', 'name', 'language']);
+        } catch (Throwable) {
+            $this->lastReadFailed = true;
+            Log::warning('JFS identity name variant read failed.');
+
+            return [];
+        }
+
+        $matches = [];
+        foreach ($rows as $row) {
+            $stored = (string) ($row->name ?? '');
+            if (JfsIdentityMatch::nameMatches($stored, $name) || ! JfsIdentityMatch::nameMatchesVariant($stored, $name)) {
+                continue;
+            }
+            $matches[] = $this->identityRecord($row);
+        }
+
+        return $this->uniqueIdentityRecords($matches);
+    }
+
+    /**
      * Parents linked to a matching child first_name. Child names are not returned.
      *
      * @return list<array{id:int,name:?string,language:?string}>
@@ -289,6 +330,50 @@ class JfsReadService
     }
 
     /**
+     * @return list<array{id:int,name:?string,language:?string}>
+     */
+    public function findClientsByChildNameVariants(string $childName): array
+    {
+        $this->lastReadFailed = false;
+        if (JfsIdentityMatch::words($childName) === []) {
+            return [];
+        }
+
+        if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
+            return [];
+        }
+
+        try {
+            $rows = DB::connection('jfs')
+                ->table('children as c')
+                ->join('app_users as u', 'u.id', '=', 'c.client_app_user_id')
+                ->where('u.role', 'client')
+                ->where(function ($query): void {
+                    $query->whereNull('u.status')->orWhere('u.status', '!=', 'blocked');
+                })
+                ->get(['u.id', 'u.name', 'u.language', 'c.first_name']);
+        } catch (Throwable) {
+            $this->lastReadFailed = true;
+            Log::warning('JFS identity child variant read failed.');
+
+            return [];
+        }
+
+        $matches = [];
+        foreach ($rows as $row) {
+            $stored = (string) ($row->first_name ?? '');
+            if (JfsIdentityMatch::nameMatches($stored, $childName) || ! JfsIdentityMatch::nameMatchesVariant($stored, $childName)) {
+                continue;
+            }
+            $matches[] = $this->identityRecord($row);
+        }
+
+        return $this->uniqueIdentityRecords($matches);
+    }
+
+    /**
      * @param  list<array{id:int,name:?string,language:?string}>  $records
      * @return list<array{id:int,name:?string,language:?string}>
      */
@@ -317,7 +402,7 @@ class JfsReadService
         ];
     }
 
-    private function clientIdentityQuery(): \Illuminate\Database\Query\Builder
+    private function clientIdentityQuery(): Builder
     {
         return DB::connection('jfs')
             ->table('app_users')

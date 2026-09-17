@@ -2,6 +2,8 @@
 
 namespace App\Services\Jfs;
 
+use App\Services\Identity\IdentityNameMatcher;
+
 final class JfsIdentityMatch
 {
     /**
@@ -43,22 +45,15 @@ final class JfsIdentityMatch
 
     public static function nameMatches(string $storedName, string $query): bool
     {
-        $storedWords = self::words($storedName);
-        $queryWords = self::words($query);
-        if ($storedWords === [] || $queryWords === []) {
-            return false;
-        }
+        return IdentityNameMatcher::matchesExact($storedName, $query);
+    }
 
-        foreach ($queryWords as $word) {
-            if (mb_strlen($word) < 2) {
-                return false;
-            }
-            if (! in_array($word, $storedWords, true)) {
-                return false;
-            }
-        }
-
-        return true;
+    /**
+     * Conservative multilingual / transliteration match. Never unique on its own.
+     */
+    public static function nameMatchesVariant(string $storedName, string $query): bool
+    {
+        return IdentityNameMatcher::matchesVariant($storedName, $query);
     }
 
     /**
@@ -66,13 +61,6 @@ final class JfsIdentityMatch
      */
     public static function words(string $value): array
     {
-        $normalized = mb_strtolower(trim(preg_replace('/\s+/u', ' ', $value) ?? $value));
-        if ($normalized === '') {
-            return [];
-        }
-
-        $parts = preg_split('/\s+/u', $normalized, -1, PREG_SPLIT_NO_EMPTY);
-
-        return is_array($parts) ? array_values($parts) : [];
+        return IdentityNameMatcher::words($value);
     }
 }

@@ -38,8 +38,10 @@ class JfsIdentityMatchTest extends TestCase
         $this->assertTrue(JfsIdentityMatch::nameMatches('Anna Ivanova', 'Ivanova Anna'));
         $this->assertTrue(JfsIdentityMatch::nameMatches('Anna Ivanova', 'Anna'));
         $this->assertTrue(JfsIdentityMatch::nameMatches('Anna Ivanova', 'Ivanova'));
+        $this->assertTrue(JfsIdentityMatch::nameMatches('Mary-Jane Smith', 'Mary Jane Smith'));
         $this->assertFalse(JfsIdentityMatch::nameMatches('Anna Ivanova', 'Ann'));
         $this->assertFalse(JfsIdentityMatch::nameMatches('Anna Ivanova', 'Iva'));
         $this->assertFalse(JfsIdentityMatch::nameMatches('Anna Ivanova', 'Petr Ivanov'));
+        $this->assertFalse(JfsIdentityMatch::nameMatchesVariant('Anna Ivanova', 'Ann'));
     }
 }

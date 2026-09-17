@@ -31,7 +31,7 @@ So we do **not** invent a push channel (option A). The supported, simple path is
 | --- | --- | --- |
 | Where | Initiation / `resolve_customer_identity` | Queue job `RunExtendedVoiceIdentitySearchJob` |
 | Budget | ~1500 ms initiation, ~4000 ms spoken tool (after YFS) | Longer; job timeout 45s |
-| Work | YFS exact phone/name, Bitrix exact phone/name, email → YFS | Same, plus optional explicit email and child/show hints as available |
+| Work | YFS exact phone/name, then a cheap in-memory multilingual candidate scan; Bitrix exact phone/controlled name (one Latin retry on a Cyrillic miss); email → YFS | Same resolver with a larger budget, plus optional explicit email and child/show hints as available |
 | Voice | Existing pre-tool speech: “Секунду, сейчас посмотрю.” | Honest: search may take a little time; do not sit in silence |
 
 Do not run a long Bitrix chain inside the fast tool if the budget is already gone.

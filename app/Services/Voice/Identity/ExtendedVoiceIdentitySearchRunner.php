@@ -57,8 +57,12 @@ class ExtendedVoiceIdentitySearchRunner
             ? VoiceContact::query()->find($search->voice_contact_id)
             : null;
 
-        if ($contact !== null && filled($contact->phone_normalized)) {
-            $byPhone = $this->resolver->resolveByPhoneFast((string) $contact->phone_normalized, 8000);
+        $phone = ($contact !== null && filled($contact->phone_normalized))
+            ? (string) $contact->phone_normalized
+            : '';
+
+        if ($phone !== '') {
+            $byPhone = $this->resolver->resolveByPhoneFast($phone, 8000);
             if ($byPhone->isUnique()) {
                 return $byPhone;
             }
@@ -79,6 +83,7 @@ class ExtendedVoiceIdentitySearchRunner
                 $name !== '' ? $name : null,
                 $child !== '' ? $child : null,
                 8000,
+                $phone !== '' ? $phone : null,
             );
             if ($byName->isUnique() || $byName->status === CustomerIdentityResult::AMBIGUOUS) {
                 return $byName;

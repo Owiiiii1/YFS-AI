@@ -2,6 +2,7 @@
 
 namespace App\Services\Bitrix;
 
+use App\Services\Identity\IdentityNameMatcher;
 use App\Services\Jfs\JfsIdentityMatch;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -93,6 +94,110 @@ final class BitrixReadOnlyIdentityClient implements BitrixIdentityGateway
             return BitrixEntityMatch::unavailable($this->ms($started));
         }
 
+        $match = $this->searchContactsByNameString($name, $started);
+        if ($match->status !== BitrixEntityMatch::NOT_FOUND) {
+            return $match;
+        }
+
+        $latin = IdentityNameMatcher::primaryLatin($name);
+        if ($latin === '' || mb_strtolower($latin) === mb_strtolower($name)) {
+            return $match;
+        }
+
+        return $this->searchContactsByNameString($latin, $started);
+    }
+
+    public function findContactIdsByChildName(?string $childName): BitrixEntityMatch
+    {
+        $started = hrtime(true);
+        $childName = trim((string) $childName);
+        if ($childName === '' || mb_strlen($childName) < 2) {
+            return BitrixEntityMatch::notFound($this->ms($started));
+        }
+        if (! $this->isConfigured()) {
+            return BitrixEntityMatch::unavailable($this->ms($started));
+        }
+
+        $response = $this->call('crm.contact.list', [
+            'select' => ['ID'],
+            'filter' => ['%'.self::CHILD_NAME_FIELD => $childName],
+            'start' => 0,
+        ]);
+        if (! $response['ok']) {
+            return BitrixEntityMatch::unavailable($this->ms($started));
+        }
+
+        $total = (int) ($response['total'] ?? 0);
+        if ($total > 8) {
+            return BitrixEntityMatch::ambiguous([], $this->ms($started), $total);
+        }
+
+        $match = $this->matchFromIds(
+            $this->idsFromList($response['result'], $total),
+            $this->ms($started),
+        );
+        if ($match->status !== BitrixEntityMatch::NOT_FOUND) {
+            return $match;
+        }
+
+        $latin = IdentityNameMatcher::primaryLatin($childName);
+        if ($latin === '' || mb_strtolower($latin) === mb_strtolower($childName)) {
+            return $match;
+        }
+
+        $latinResponse = $this->call('crm.contact.list', [
+            'select' => ['ID'],
+            'filter' => ['%'.self::CHILD_NAME_FIELD => $latin],
+            'start' => 0,
+        ]);
+        if (! $latinResponse['ok']) {
+            return $match;
+        }
+        $latinTotal = (int) ($latinResponse['total'] ?? 0);
+        if ($latinTotal > 8) {
+            return BitrixEntityMatch::ambiguous([], $this->ms($started), $latinTotal);
+        }
+
+        return $this->matchFromIds(
+            $this->idsFromList($latinResponse['result'], $latinTotal),
+            $this->ms($started),
+        );
+    }
+
+    public function emailsForContactIds(array $contactIds, int $limit = 3): array
+    {
+        if (! $this->isConfigured()) {
+            return [];
+        }
+
+        $emails = [];
+        $seen = [];
+        foreach (array_slice(array_values(array_unique(array_map('intval', $contactIds))), 0, max(1, $limit)) as $id) {
+            if ($id <= 0) {
+                continue;
+            }
+            $response = $this->call('crm.contact.get', [
+                'id' => $id,
+                'select' => ['ID', 'EMAIL'],
+            ]);
+            if (! $response['ok'] || ! is_array($response['result'])) {
+                continue;
+            }
+            foreach ($this->emailsFromContact($response['result']) as $email) {
+                $key = mb_strtolower($email);
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = true;
+                $emails[] = $email;
+            }
+        }
+
+        return $emails;
+    }
+
+    private function searchContactsByNameString(string $name, int $started): BitrixEntityMatch
+    {
         $parts = preg_split('/\s+/u', $name, -1, PREG_SPLIT_NO_EMPTY);
         if (! is_array($parts)) {
             $parts = [];
@@ -135,69 +240,6 @@ final class BitrixReadOnlyIdentityClient implements BitrixIdentityGateway
         }
 
         return $this->matchFromIds($ids, $this->ms($started));
-    }
-
-    public function findContactIdsByChildName(?string $childName): BitrixEntityMatch
-    {
-        $started = hrtime(true);
-        $childName = trim((string) $childName);
-        if ($childName === '' || mb_strlen($childName) < 2) {
-            return BitrixEntityMatch::notFound($this->ms($started));
-        }
-        if (! $this->isConfigured()) {
-            return BitrixEntityMatch::unavailable($this->ms($started));
-        }
-
-        $response = $this->call('crm.contact.list', [
-            'select' => ['ID'],
-            'filter' => ['%'.self::CHILD_NAME_FIELD => $childName],
-            'start' => 0,
-        ]);
-        if (! $response['ok']) {
-            return BitrixEntityMatch::unavailable($this->ms($started));
-        }
-
-        $total = (int) ($response['total'] ?? 0);
-        if ($total > 8) {
-            return BitrixEntityMatch::ambiguous([], $this->ms($started), $total);
-        }
-
-        return $this->matchFromIds(
-            $this->idsFromList($response['result'], $total),
-            $this->ms($started),
-        );
-    }
-
-    public function emailsForContactIds(array $contactIds, int $limit = 3): array
-    {
-        if (! $this->isConfigured()) {
-            return [];
-        }
-
-        $emails = [];
-        $seen = [];
-        foreach (array_slice(array_values(array_unique(array_map('intval', $contactIds))), 0, max(1, $limit)) as $id) {
-            if ($id <= 0) {
-                continue;
-            }
-            $response = $this->call('crm.contact.get', [
-                'id' => $id,
-                'select' => ['ID', 'EMAIL'],
-            ]);
-            if (! $response['ok'] || ! is_array($response['result'])) {
-                continue;
-            }
-            foreach ($this->emailsFromContact($response['result']) as $email) {
-                $key = mb_strtolower($email);
-                if (isset($seen[$key])) {
-                    continue;
-                }
-                $seen[$key] = true;
-                $emails[] = $email;
-            }
-        }
-
-        return $emails;
     }
 
     /**

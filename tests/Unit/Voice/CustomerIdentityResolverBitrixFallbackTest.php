@@ -2,6 +2,7 @@
 
 namespace Tests\Unit\Voice;
 
+use App\Services\Bitrix\BitrixReadOnlyIdentityClient;
 use App\Services\Bitrix\BitrixYfsLinker;
 use App\Services\Voice\Identity\CustomerIdentityResolver;
 use App\Services\Voice\Identity\CustomerIdentityResult;
@@ -172,12 +173,54 @@ class CustomerIdentityResolverBitrixFallbackTest extends TestCase
     }
 
     #[Test]
+    public function multilingual_name_alone_does_not_become_unique_via_bitrix_contact_without_email(): void
+    {
+        $this->jfs->clients[] = [
+            'id' => 31,
+            'name' => 'Yevheniia Kovalenko',
+            'language' => 'uk',
+            'phone' => '+1-555-301-0001',
+            'email' => 'yevheniia@example.com',
+            'children' => ['Sofiia'],
+        ];
+        $this->bitrix->nameToContactIds['евгения коваленко'] = [88];
+        $this->bitrix->contactEmails[88] = [];
+
+        $result = $this->resolver->resolveBySpokenHintsFast('Евгения Коваленко');
+
+        $this->assertSame(CustomerIdentityResult::AMBIGUOUS, $result->status);
+        $this->assertNull($result->yfsAppUserId);
+        $this->assertGreaterThan(0, $this->bitrix->nameLookups);
+    }
+
+    #[Test]
+    public function multilingual_name_can_become_unique_only_through_bitrix_email_to_yfs(): void
+    {
+        $this->jfs->clients[] = [
+            'id' => 31,
+            'name' => 'Yevheniia Kovalenko',
+            'language' => 'uk',
+            'phone' => '+1-555-301-0001',
+            'email' => 'yevheniia@example.com',
+            'children' => ['Sofiia'],
+        ];
+        $this->bitrix->nameToContactIds['евгения коваленко'] = [88];
+        $this->bitrix->contactEmails[88] = ['yevheniia@example.com'];
+
+        $result = $this->resolver->resolveBySpokenHintsFast('Евгения Коваленко');
+
+        $this->assertTrue($result->isUnique());
+        $this->assertSame(31, $result->yfsAppUserId);
+        $this->assertSame('bitrix_name_email', $result->matchMethod);
+    }
+
+    #[Test]
     public function container_injects_bitrix_client_and_linker(): void
     {
         $resolver = $this->app->make(CustomerIdentityResolver::class);
         $ref = new \ReflectionClass($resolver);
 
-        $this->assertInstanceOf(\App\Services\Bitrix\BitrixReadOnlyIdentityClient::class, $ref->getProperty('bitrix')->getValue($resolver));
-        $this->assertInstanceOf(\App\Services\Bitrix\BitrixYfsLinker::class, $ref->getProperty('linker')->getValue($resolver));
+        $this->assertInstanceOf(BitrixReadOnlyIdentityClient::class, $ref->getProperty('bitrix')->getValue($resolver));
+        $this->assertInstanceOf(BitrixYfsLinker::class, $ref->getProperty('linker')->getValue($resolver));
     }
 }

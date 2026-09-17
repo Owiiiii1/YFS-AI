@@ -4,6 +4,7 @@ namespace Tests\Unit\Bitrix;
 
 use App\Services\Bitrix\BitrixEntityMatch;
 use App\Services\Bitrix\BitrixReadOnlyIdentityClient;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -87,7 +88,7 @@ class BitrixReadOnlyIdentityClientTest extends TestCase
     public function timeout_is_unavailable(): void
     {
         Http::fake(function () {
-            throw new \Illuminate\Http\Client\ConnectionException('timed out');
+            throw new ConnectionException('timed out');
         });
 
         $match = $this->client->findContactIdsByPhone('15551230000');
@@ -157,5 +158,47 @@ class BitrixReadOnlyIdentityClientTest extends TestCase
                 && ! array_key_exists('%PHONE', $filter)
                 && ! array_key_exists('PHONE', $filter);
         });
+    }
+
+    #[Test]
+    public function cyrillic_name_miss_retries_one_latin_query_without_find_or_phone_like(): void
+    {
+        Http::fake(function ($request) {
+            $this->assertStringContainsString('crm.contact.list', $request->url());
+            $filter = $request->data()['filter'] ?? [];
+            $this->assertArrayNotHasKey('FIND', $filter);
+            $this->assertArrayNotHasKey('%PHONE', $filter);
+            $name = (string) ($filter['%NAME'] ?? '');
+            if (preg_match('/\p{Cyrillic}/u', $name) === 1) {
+                return Http::response(['result' => [], 'total' => 0]);
+            }
+
+            return Http::response([
+                'result' => [['ID' => '9']],
+                'total' => 1,
+            ]);
+        });
+
+        $match = $this->client->findContactIdsByName('Евгения Коваленко');
+
+        $this->assertTrue($match->isUnique());
+        $this->assertSame([9], $match->contactIds);
+        Http::assertSentCount(3);
+    }
+
+    #[Test]
+    public function latin_name_does_not_add_a_second_script_query(): void
+    {
+        Http::fake([
+            'https://bitrix.example/rest/1/test-token/crm.contact.list.json' => Http::response([
+                'result' => [['ID' => '9']],
+                'total' => 1,
+            ]),
+        ]);
+
+        $match = $this->client->findContactIdsByName('Olga Petrova');
+
+        $this->assertTrue($match->isUnique());
+        Http::assertSentCount(1);
     }
 }

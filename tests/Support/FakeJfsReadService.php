@@ -42,6 +42,10 @@ final class FakeJfsReadService extends JfsReadService
 
     public int $findClientsByChildNameCalls = 0;
 
+    public int $findClientsByNameVariantCalls = 0;
+
+    public int $findClientsByChildNameVariantCalls = 0;
+
     public int $writeCalls = 0;
 
     public function isConfigured(): bool
@@ -158,6 +162,42 @@ final class FakeJfsReadService extends JfsReadService
         return $this->identityRecords(function (array $client) use ($childName): bool {
             foreach ($client['children'] ?? [] as $firstName) {
                 if (JfsIdentityMatch::nameMatches((string) $firstName, $childName)) {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+    }
+
+    public function findClientsByNameVariants(string $name): array
+    {
+        $this->findClientsByNameVariantCalls++;
+
+        if ($this->lastReadFailed()) {
+            return [];
+        }
+
+        return $this->identityRecords(function (array $client) use ($name): bool {
+            $stored = (string) ($client['name'] ?? '');
+
+            return ! JfsIdentityMatch::nameMatches($stored, $name)
+                && JfsIdentityMatch::nameMatchesVariant($stored, $name);
+        });
+    }
+
+    public function findClientsByChildNameVariants(string $childName): array
+    {
+        $this->findClientsByChildNameVariantCalls++;
+
+        if ($this->lastReadFailed()) {
+            return [];
+        }
+
+        return $this->identityRecords(function (array $client) use ($childName): bool {
+            foreach ($client['children'] ?? [] as $firstName) {
+                $stored = (string) $firstName;
+                if (! JfsIdentityMatch::nameMatches($stored, $childName) && JfsIdentityMatch::nameMatchesVariant($stored, $childName)) {
                     return true;
                 }
             }

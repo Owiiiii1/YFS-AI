@@ -279,6 +279,36 @@ class ResolveCustomerIdentityVoiceToolTest extends TestCase
         $this->assertSame('phone', $contact->metadata['yfs_customer']['match_method']);
     }
 
+    #[Test]
+    public function trusted_session_phone_can_confirm_multilingual_name(): void
+    {
+        $this->jfs->clients[] = [
+            'id' => 31,
+            'name' => 'Yevheniia Kovalenko',
+            'language' => 'uk',
+            'phone' => '+1-555-301-0001',
+            'children' => ['Sofiia'],
+        ];
+        $contact = new MemoryVoiceContact;
+        $contact->forceFill([
+            'phone_normalized' => '+15553010001',
+            'metadata' => [],
+        ]);
+
+        $payload = $this->tool($contact)->execute([
+            'name' => 'Евгения Коваленко',
+            'system__caller_id' => '+15553010001',
+        ]);
+
+        $this->assertSame('unique', $payload['status']);
+        $this->assertSame('identified', $payload['next_action']);
+        $this->assertSame('Yevheniia Kovalenko', $payload['customer']['display_name']);
+        $this->assertSame(31, $contact->metadata['yfs_customer']['app_user_id']);
+        $encoded = json_encode($payload) ?: '';
+        $this->assertStringNotContainsString('555', $encoded);
+        $this->assertStringNotContainsString('Евгения', $encoded);
+    }
+
     private function tool(?MemoryVoiceContact $contact = null): ResolveCustomerIdentityVoiceTool
     {
         $sessions = \Mockery::mock(VoiceContactSessionResolver::class);
