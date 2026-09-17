@@ -10,7 +10,7 @@ Done. Read-only. Bound unique Voice identity required. Bitrix is not a context s
 
 ## Commit hash
 
-Pending first push; recorded in the follow-up commit on `main`.
+`ee4e64913cc95b0779f5f29abd52bb71347cbf8b`
 
 ## Real JFS schema / relations (verified)
 
