@@ -10,7 +10,7 @@ Done. Architecture unchanged: YFS-first → narrow Bitrix fallback → YFS canon
 
 ## Commit hash
 
-Pending first push; recorded in the follow-up commit on `main`.
+`01bb296155b45b8b3ba8fd97a942e275b214f0b1`
 
 ## What existed before
 
