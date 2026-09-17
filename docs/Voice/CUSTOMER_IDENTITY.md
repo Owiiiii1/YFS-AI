@@ -6,6 +6,7 @@ Canonical audit: `docs/Voice/CUSTOMER_IDENTITY_AND_BITRIX_AUDIT.md`.
 Bitrix fallback: `docs/Voice/BITRIX_IDENTITY_FALLBACK.md`.  
 Extended search: `docs/Voice/EXTENDED_IDENTITY_SEARCH.md`.  
 Filler / pre-tool speech: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`.  
+Personal customer context: `docs/Voice/CUSTOMER_CONTEXT.md`.  
 ElevenLabs live-tool paste fields: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`.
 
 YFS Core remains the canonical identity for Voice. Bitrix is a read-only hint source. A Bitrix contact is never a YFS identity by itself. Identity reads JFS only through `JfsReadService` (SELECT). Laravel never writes `app_users.phone` or any other JFS row. Bitrix write methods are not used.
@@ -43,6 +44,7 @@ Spoken identity (personal question, unknown / ambiguous / other number)
   → POST /api/voice/tools/resolve-customer-identity
   → CustomerIdentityResolver::resolveBySpokenHintsFast(name, child_name, trusted session phone)
   → UNIQUE binds compact identity onto the current VoiceContact when a trusted session id is present
+  → personal questions then use get_customer_context (YFS Core only; bound identity required)
   → if still not unique and a personal fact is still needed → start_extended_identity_search
 ```
 
@@ -179,7 +181,7 @@ Call resolve_customer_identity only when personal/customer-specific information 
 - Still ambiguous after child name (`ask_additional_identifier`): do not guess and do not list clients. You may start extended search.
 
 RU ask: `Подскажите, пожалуйста, ваше имя и фамилию.`  
-EN / UK: natural equivalents already in wrapper v6.
+EN / UK: natural equivalents already in wrapper v7.
 
 ### Request / response contract
 
@@ -296,7 +298,7 @@ JFS and Bitrix errors must not fail the webhook.
 
 ## Prompt
 
-Wrapper **v6**, section **E. CALLER IDENTITY** and **F. EXTENDED IDENTITY SEARCH**. Runtime `CALLER CONTEXT` is appended when initiation resolves identity and is not part of the prompt version hash.
+Wrapper **v7**, section **E. CALLER IDENTITY**, **F. EXTENDED IDENTITY SEARCH**, and **G. CUSTOMER CONTEXT**. Runtime `CALLER CONTEXT` is appended when initiation resolves identity and is not part of the prompt version hash.
 
 ---
 

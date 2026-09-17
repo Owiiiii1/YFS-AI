@@ -374,6 +374,229 @@ class JfsReadService
     }
 
     /**
+     * Compact Voice customer-support snapshot. Read-only. No phones, emails,
+     * payments, contracts, files, notes, or badge codes.
+     *
+     * @return array{
+     *     customer: array{display_name:?string, language:?string},
+     *     children: list<array{
+     *         display_name: string,
+     *         participations: list<array{
+     *             show: string,
+     *             city: string,
+     *             date: ?string,
+     *             date_announced: bool,
+     *             is_past: bool,
+     *             status: string,
+     *             category?: string,
+     *             package?: string
+     *         }>
+     *     }>
+     * }|null
+     */
+    public function loadCustomerContext(int $appUserId): ?array
+    {
+        $this->lastReadFailed = false;
+        if ($appUserId <= 0) {
+            return null;
+        }
+
+        if (! $this->isConfigured()) {
+            $this->lastReadFailed = true;
+
+            return null;
+        }
+
+        try {
+            $user = $this->clientIdentityQuery()
+                ->where('id', $appUserId)
+                ->first(['id', 'name', 'language']);
+        } catch (Throwable) {
+            $this->lastReadFailed = true;
+            Log::warning('JFS customer context user read failed.');
+
+            return null;
+        }
+
+        if ($user === null) {
+            return null;
+        }
+
+        try {
+            $childRows = DB::connection('jfs')
+                ->table('children')
+                ->where('client_app_user_id', $appUserId)
+                ->orderBy('id')
+                ->get(['id', 'first_name']);
+        } catch (Throwable) {
+            $this->lastReadFailed = true;
+            Log::warning('JFS customer context children read failed.');
+
+            return null;
+        }
+
+        $childIds = [];
+        foreach ($childRows as $child) {
+            $id = (int) $child->id;
+            if ($id > 0) {
+                $childIds[] = $id;
+            }
+        }
+
+        $assignmentsByChild = [];
+        if ($childIds !== []) {
+            try {
+                $assignmentRows = DB::connection('jfs')
+                    ->table('child_event_assignments as a')
+                    ->join('events as e', 'e.id', '=', 'a.event_id')
+                    ->leftJoin('package_templates as p', 'p.id', '=', 'a.package_template_id')
+                    ->whereIn('a.child_id', $childIds)
+                    ->orderBy('e.starts_at')
+                    ->orderBy('a.id')
+                    ->get([
+                        'a.child_id',
+                        'a.status',
+                        'a.family_look',
+                        'e.name as event_name',
+                        'e.city',
+                        'e.starts_at',
+                        'e.client_show_event_date',
+                        'p.name as package_name',
+                    ]);
+            } catch (Throwable) {
+                $this->lastReadFailed = true;
+                Log::warning('JFS customer context assignment read failed.');
+
+                return null;
+            }
+
+            foreach ($assignmentRows as $row) {
+                $assignmentsByChild[(int) $row->child_id][] = $this->mapParticipation($row);
+            }
+            foreach ($assignmentsByChild as $childId => $list) {
+                $assignmentsByChild[$childId] = $this->limitParticipationsForChild($list);
+            }
+            $assignmentsByChild = $this->capParticipationsAcrossChildren($assignmentsByChild);
+        }
+
+        $children = [];
+        foreach ($childRows as $child) {
+            $name = trim((string) ($child->first_name ?? ''));
+            if ($name === '') {
+                continue;
+            }
+            $children[] = [
+                'display_name' => $name,
+                'participations' => array_values($assignmentsByChild[(int) $child->id] ?? []),
+            ];
+        }
+
+        $displayName = trim((string) ($user->name ?? ''));
+        $language = trim((string) ($user->language ?? ''));
+
+        return [
+            'customer' => [
+                'display_name' => $displayName !== '' ? $displayName : null,
+                'language' => $language !== '' ? $language : null,
+            ],
+            'children' => $children,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     show: string,
+     *     city: string,
+     *     date: ?string,
+     *     date_announced: bool,
+     *     is_past: bool,
+     *     status: string,
+     *     category?: string,
+     *     package?: string
+     * }
+     */
+    private function mapParticipation(object $row): array
+    {
+        $startsAt = $row->starts_at ? (string) $row->starts_at : null;
+        $announced = $this->dateIsAnnounced($row->client_show_event_date ?? null);
+        $item = [
+            'show' => (string) ($row->event_name ?? ''),
+            'city' => (string) ($row->city ?? ''),
+            'date' => $announced ? $this->formatDate($startsAt) : null,
+            'date_announced' => $announced,
+            'is_past' => $this->isPast($startsAt),
+            'status' => (string) ($row->status ?? ''),
+        ];
+        if ((bool) ($row->family_look ?? false)) {
+            $item['category'] = 'family_look';
+        }
+        $package = trim((string) ($row->package_name ?? ''));
+        if ($package !== '') {
+            $item['package'] = $package;
+        }
+
+        return $item;
+    }
+
+    /**
+     * Upcoming/unannounced assignments are kept. Past shows are capped per child.
+     *
+     * @param  list<array{show:string,city:string,date:?string,date_announced:bool,is_past:bool,status:string,category?:string,package?:string}>  $list
+     * @return list<array{show:string,city:string,date:?string,date_announced:bool,is_past:bool,status:string,category?:string,package?:string}>
+     */
+    private function limitParticipationsForChild(array $list): array
+    {
+        $upcoming = [];
+        $past = [];
+        foreach ($list as $item) {
+            if ($item['is_past'] ?? false) {
+                $past[] = $item;
+            } else {
+                $upcoming[] = $item;
+            }
+        }
+
+        $past = array_reverse(array_slice($past, -8));
+
+        return array_values(array_merge($upcoming, $past));
+    }
+
+    /**
+     * @param  array<int, list<array{show:string,city:string,date:?string,date_announced:bool,is_past:bool,status:string,category?:string,package?:string}>>  $byChild
+     * @return array<int, list<array{show:string,city:string,date:?string,date_announced:bool,is_past:bool,status:string,category?:string,package?:string}>>
+     */
+    private function capParticipationsAcrossChildren(array $byChild): array
+    {
+        $total = 0;
+        foreach ($byChild as $list) {
+            $total += count($list);
+        }
+        if ($total <= 24) {
+            return $byChild;
+        }
+
+        foreach (array_reverse(array_keys($byChild), true) as $childId) {
+            while ($total > 24 && $byChild[$childId] !== []) {
+                $last = $byChild[$childId][count($byChild[$childId]) - 1];
+                if (! ($last['is_past'] ?? false)) {
+                    break;
+                }
+                array_pop($byChild[$childId]);
+                $total--;
+            }
+        }
+
+        foreach (array_reverse(array_keys($byChild), true) as $childId) {
+            while ($total > 24 && $byChild[$childId] !== []) {
+                array_pop($byChild[$childId]);
+                $total--;
+            }
+        }
+
+        return $byChild;
+    }
+
+    /**
      * @param  list<array{id:int,name:?string,language:?string}>  $records
      * @return list<array{id:int,name:?string,language:?string}>
      */

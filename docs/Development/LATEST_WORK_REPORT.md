@@ -2,150 +2,121 @@
 
 ## Task
 
-Extend existing `CustomerIdentityResolver` with conservative multilingual name matching (RU / UA / EN) so spoken Cyrillic names can match Latin-stored YFS/Bitrix names without creating a parallel resolver.
+Add the first personal YFS Core Voice tool, `get_customer_context`, so an already identified caller can be answered about their children and show participations.
 
 ## Status
 
-Done. Architecture unchanged: YFS-first → narrow Bitrix fallback → YFS canonical identity. No YFS/Bitrix writes. No Instagram or ElevenLabs dashboard changes. `resolve_customer_identity` API contract unchanged.
+Done. Read-only. Bound unique Voice identity required. Bitrix is not a context source. No Instagram / neighbor-project / ElevenLabs dashboard code changes. `resolve_customer_identity` and public show tools unchanged.
 
 ## Commit hash
 
-`01bb296155b45b8b3ba8fd97a942e275b214f0b1`
+Pending first push; recorded in the follow-up commit on `main`.
 
-## What existed before
+## Real JFS schema / relations (verified)
 
-Voice identity already:
+Live `information_schema` plus `/var/www/jfs` models (read-only). No customer rows were copied into this report.
 
-1. Matched YFS clients by exact whole-word, order-insensitive, case-insensitive name (`Ann` ≠ `Anna`).
-2. Intersected parent name with child first name.
-3. Used trusted caller phone on initiation, not as an LLM tool argument.
-4. Optionally fell back to allowlisted Bitrix `crm.contact.list` `%NAME` / `%LAST_NAME`, then emails inside Laravel, then `findClientByEmail`.
-5. Bound only `unique` results onto `VoiceContact`.
+| Table | Link | Voice-relevant columns used |
+| --- | --- | --- |
+| `app_users` | canonical customer when `role = client` and not `blocked` | `id` (internal only), `name`, `language` |
+| `children` | `client_app_user_id` → `app_users.id` | `id` (join only), `first_name` |
+| `child_event_assignments` | unique `child_id + event_id` | `status`, `family_look`, `package_template_id` |
+| `events` | `child_event_assignments.event_id` | `name`, `city`, `starts_at`, `client_show_event_date` |
+| `package_templates` | `child_event_assignments.package_template_id` | `name` |
 
-A spoken form such as `Евгения Коваленко` did not match a stored `Yevheniia Kovalenko`. Similarity alone was correctly not a unique rule — the gap was candidate generation across scripts.
+Existing `JfsReadService` already had public events/brands and identity lookups. It did **not** load a customer snapshot. `findClientByEmail()` returns phone/email and is not used by this tool.
 
-## Chosen algorithm
+## Personal data included
 
-Shared layer `App\Services\Identity\IdentityNameNormalizer` + `IdentityNameMatcher`:
+- Customer `display_name` from `app_users.name`
+- `preferred_language` from `app_users.language` when set
+- Children `display_name` from `children.first_name`
+- Participations nested under each child: show, city, date (only if the public date flag allows it), `date_announced`, `is_past`, assignment `status`, `category: family_look` only when that boolean is true, per-assignment `package` name when present
+- Top-level `customer.package` only if every returned participation shares one package name
 
-1. **Normalize:** NFKC when `Normalizer` exists; lowercase; `ё→е`; `ґ→г`; hyphens/apostrophes → spaces; collapse whitespace; Unicode letters/digits only.
-2. **Exact match:** whole-word alignment on folded tokens (order-insensitive). This remains the unique-capable YFS name match.
-3. **Variant match:** each query word must share a transliteration/alias **key** with a distinct stored word. Keys are a bounded BFS of UA/RU → Latin character options (cap 24 variants/word), then a **small** alias list only for language forms transliteration cannot produce (`Julia`/`Yuliia`, `Alexander`/`Oleksandr`, `Kateryna`/`Ekaterina`, …). Not a name dictionary.
-4. **Resolver:** exact YFS pool first. Only if empty, variant pool. Variant-only never calls `unique`.
-5. **Bitrix:** same REST methods. If the spoken string is Cyrillic and the controlled lookup is `not_found`, **one** extra `%NAME` (and existing `%NAME+%LAST_NAME` split) using `primaryLatin()` (canonical alias if any). No `FIND`, no `%PHONE`, no dumps.
+## Intentionally excluded
 
-First/last order is already handled by word alignment. Child names use the same exact-then-variant path.
+Phones, emails, passwords / `client_password_display`, contracts, notes, gender, birthdate, ChildData measurements/photos, badge/QR/checkin codes, `payment_status` and all payment tables, brand assignment ids, rehearsal slots/bookings, tickets/parking/meals, stage plans, staff/supervisor ids, Bitrix, internal DB ids in the ElevenLabs JSON.
 
-## Where multilingual matching runs
+## Security model
 
-**Both fast and extended**, because it is not a heavy fuzzy search:
+```text
+ElevenLabs system__conversation_id
+  → existing VoiceContact (no create)
+  → metadata.yfs_customer status=unique + app_user_id
+  → JfsReadService::loadCustomerContext(app_user_id)
+```
 
-| Path | What runs |
-| --- | --- |
-| Fast YFS | Exact in-memory scan (~800 clients). On miss, a second PHP scan with variant keys. No extra SQL shape. |
-| Fast Bitrix | Only after YFS is not unique. +0 queries if already Latin/unique/ambiguous. +1 Latin controlled list on a Cyrillic miss. |
-| Extended | Same `CustomerIdentityResolver` with an 8s budget; trusted `VoiceContact.phone_normalized` is passed into spoken hints so a variant name can corroborate an ambiguous/shared phone. |
+If conversation id misses, existing `system__caller_id` contact is used. Conversation match wins; caller id cannot swap a bound conversation. LLM `customer_id` / `name` / `email` / `phone` / `child_id` are not read for lookup. The HTTP controller only forwards trusted system ids.
 
-Fast initiation phone path is unchanged (no name fuzzy there).
+No unique bound identity → `identity_required` (no children). YFS read failure → `unavailable`. Bound id that is not a live client → `identity_required`.
 
-## Why this is safe
+Auth: existing `AuthenticateElevenLabsTool` / `ELEVENLABS_TOOL_TOKEN`.
 
-- No writes to YFS or Bitrix.
-- Bitrix allowlist unchanged.
-- Variant/fuzzy name is **candidate generation only**.
-- `unique` still requires an existing identity signal (below).
-- Similar names (`Ann`/`Anna`, `Евгения`/`Евгений`, `Юлия`/`Юліана`) do not share keys.
-- Several variant candidates → `ambiguous`; never auto-pick; never list names to ElevenLabs.
-- Logs still only `status` / `match_method` / `match_count` (no PII).
-- Tests use synthetic names only.
-- LLM still cannot send `phone`; trusted phone comes from `VoiceContactSessionResolver`.
+## API contract
 
-## Signals that may confirm `unique`
+`POST /api/voice/tools/customer-context`  
+Tool name: `get_customer_context`
 
-- Exact YFS whole-word name (existing Latin/English behavior).
-- Exact YFS child name (existing).
-- Parent **and** child both match the same parent (exact or variant) — child is extra evidence.
-- Trusted session phone intersects exactly one name/child candidate.
-- Existing unambiguous YFS phone match (initiation / extended phone-first).
-- Bitrix controlled lookup → emails in Laravel → one canonical YFS `findClientByEmail`.
+Input (system dynamic variables only): `system__conversation_id`, `system__caller_id`.
 
-A Bitrix contact without that email linkage is never a YFS customer.
+OK: `{ ok: true, tool, status: "ok", customer, children }`  
+Not identified: `{ ok: true, tool, status: "identity_required" }`  
+YFS down: `{ ok: false, tool, status: "unavailable" }`
 
-## Cases that stay `ambiguous` (or `not_found`)
+Participations live under each child (cleaner for “which shows did Mia do”).
 
-- Single variant-only name hit, no child, no trusted phone, no Bitrix email link → `ambiguous` (`ask_child_name`), even if `match_count` is 1.
-- Several multilingual candidates.
-- Exact last-name-only hits that already existed (`Ivanova`).
-- Variant child-only with no extra signal.
-- Trusted phone that does not corroborate the spoken variant (falls through; variant-only still not unique).
-- Similar but distinct names → `not_found` or a different candidate, never a wrong `unique`.
-- Bitrix contact with no unique YFS email.
+## How the current customer is determined
 
-## File changes
+The same VoiceContact unique bind already written by initiation phone match, `resolve_customer_identity`, or extended search (`VoiceCustomerIdentityStore`). This tool never identifies a stranger from a spoken name in the body.
 
-Added:
+## Prompt wrapper
 
-- `app/Services/Identity/IdentityNameNormalizer.php`
-- `app/Services/Identity/IdentityNameMatcher.php`
-- `tests/Unit/Identity/IdentityNameMatcherTest.php`
-- `tests/Unit/Voice/CustomerIdentityResolverMultilingualTest.php`
+Wrapper **v7**. New section **G. CUSTOMER CONTEXT**. Section E and unique CALLER CONTEXT tell the model to call `get_customer_context` before saying children/registrations/history are unavailable. A/B/C policy rules are unchanged. Public calendars still use `get_public_shows` / `get_show_brands`.
 
-Updated:
+## Size / latency
 
-- `app/Services/Jfs/JfsIdentityMatch.php` — exact match uses the normalizer; `nameMatchesVariant()`.
-- `app/Services/Jfs/JfsReadService.php` — `findClientsByNameVariants` / `findClientsByChildNameVariants`.
-- `app/Services/Voice/Identity/CustomerIdentityResolver.php` — conservative spoken pipeline; optional trusted phone.
-- `app/Services/Voice/Tools/ResolveCustomerIdentityVoiceTool.php` — resolve after trusted session so phone can corroborate.
-- `app/Services/Voice/Identity/ExtendedVoiceIdentitySearchRunner.php` — pass trusted phone into spoken fast resolve when phone was not already unique.
-- `app/Services/Bitrix/BitrixReadOnlyIdentityClient.php` — one Latin retry on Cyrillic miss.
-- `tests/Support/FakeJfsReadService.php` and identity/Bitrix/tool tests.
-- `docs/Voice/CUSTOMER_IDENTITY.md`, `BITRIX_IDENTITY_FALLBACK.md`, `EXTENDED_IDENTITY_SEARCH.md`.
+- Queries: one user row, children for that parent, assignments+events+package names for those child ids.
+- Upcoming/unannounced assignments kept; max **8** most recent past shows per child; global cap **24**.
+- Typical payload is a few hundred bytes to a couple of KB. Fast JFS path; `pre_tool_speech: force` like identity.
 
-Unchanged: Instagram module, neighbor projects, ElevenLabs tool JSON, webhook URL, credentials.
+## Files
 
-## Tests and results
+Added: `GetCustomerContextVoiceTool`, `ElevenLabsGetCustomerContextController`, `docs/Voice/CUSTOMER_CONTEXT.md`, unit/feature tests.
 
-Relevant suite (matcher, JFS match, resolver, Bitrix client, Bitrix fallback, spoken tool, linker, extended search, webhook):
+Updated: `JfsReadService::loadCustomerContext`, `VoiceContactSessionResolver::findExistingTrusted`, `VoiceContactDirectory::findByCallerId`, FakeJfs, AppServiceProvider registry, `routes/api.php`, prompt builder v7, Voice docs.
 
-`85 passed` (363 assertions).
+## Tests / results
 
-Coverage includes:
+Relevant: GetCustomerContext (verified customer/children/participations, no children, several children, identity_required, body cannot select another customer, caller_id cannot replace conversation bind, YFS unavailable, no internal fields), session resolver, prompt v7, existing identity/public tools.
 
-- exact Latin name still unique
-- Cyrillic RU → Latin stored name (candidate, not unique alone)
-- Cyrillic UA → Latin stored name
-- common transliteration variants
-- child_name Cyrillic → Latin with parent variant → unique
-- first/last order and hyphen folding
-- ambiguous multilingual pair
-- similar names must not become unique
-- trusted phone + multilingual name → unique
-- existing English/Latin unique + `Ivanova` ambiguous
-- Bitrix still requires email; no `FIND` / `%PHONE`; Latin retry on Cyrillic miss
+Filter run: **67 passed**, 3 skipped.
 
-Full `php artisan test`: **312** tests, **262** passed, **46** skipped (existing SQLite/DB skips), **4** errors in `BotPromptPatchServiceTest` and `AiPromptAnalysisInfrastructureTest` (prompt-path policy / existing `gemini` provider row). Those tests do not touch identity code and are unrelated to this change.
+Full `php artisan test`: **327** tests, **277** passed, **46** skipped, **4** errors in `BotPromptPatchServiceTest` / `AiPromptAnalysisInfrastructureTest` (unrelated prompt-path / existing `gemini` row). Same unrelated failures as the previous identity change.
 
-## Latency impact
-
-- Fast unique Latin names: one YFS scan, same as before (no variant scan, no extra Bitrix).
-- Fast Cyrillic/transliteration miss: one extra in-memory pass over the same ~800 `id/name/language` rows (milliseconds).
-- Fast Bitrix: +0 or +1 controlled `crm.contact.list` (plus the existing first/last split on that string). Still inside the 4s spoken-tool budget.
-- No unbounded fuzzy search on the fast path.
-
-## Bitrix API impact
-
-Allowlist unchanged: `scope`, `profile`, `crm.duplicate.findbycomm`, `telephony.externalCall.searchCrmEntities`, `crm.contact.list`, `crm.contact.get`.
-
-Name lookup still `%NAME` and optional `%NAME`+`%LAST_NAME`. Child still `%UF_CRM_1748955762209`. On a Cyrillic `not_found` only, one additional list with a single Latin form. No FIND, no `%PHONE`, no deals/timeline/activity/files/comments, no writes.
+Production-safe smoke: authenticated `POST /api/voice/tools/customer-context` with no session returns `identity_required` and no names/phones/emails.
 
 ## Migration / config impact
 
-**None.** No new tables, columns, env keys, or `config/services.php` keys. Existing `BITRIX_*` budgets still apply. `php artisan config:cache` is not required for this change.
+**None.** No new tables or env keys. Existing Voice identity metadata is reused.
 
-## Still verify with a real call
+**Ops:** route cache was rebuilt on this host (`php artisan route:cache`) so the new URL is live. No `config:cache` change required for this feature.
 
-1. Call from a known unique number: initiation identity unchanged.
-2. Unknown/shared number: speak a Cyrillic name whose YFS row is Latin (synthetic or a known-safe test client). Expect `ask_child_name`, not an immediate unique, unless trusted phone or child/email already confirms.
-3. Same caller: add child first name in Cyrillic matching a Latin `children.first_name` → `unique` and bind.
-4. Confirm ElevenLabs still receives only `status` / `next_action` / `customer.display_name`.
-5. If Bitrix is configured: a Latin CRM contact with a unique YFS email can still confirm after a Cyrillic spoken miss; a CRM-only contact still must not identify.
+## ElevenLabs (manual)
+
+This repo does not change the dashboard. Paste the webhook tool JSON from `docs/Voice/CUSTOMER_CONTEXT.md`:
+
+- URL `https://ai.youngfashionshow.com/api/voice/tools/customer-context`
+- Reuse the existing Authorization secret
+- `system__conversation_id` / `system__caller_id` as dynamic variables only
+- `pre_tool_speech: force`, timeout 20s
+
+Republish the agent so wrapper v7 is used (initiation already sends the Laravel prompt).
+
+## Real call checklist
+
+1. Known unique number: initiation still identifies.
+2. “Какие на меня зарегистрированы дети?” after identity → tool `ok`, spoken child names, not “список недоступен”.
+3. “В каких шоу участвовал мой ребёнок?” → participations; if several children, agent asks which child.
+4. Unidentified caller asking the same → `identity_required` then existing name/child identity flow, then context.
+5. Confirm ElevenLabs JSON has no ids/phones/emails and Bitrix is not queried.

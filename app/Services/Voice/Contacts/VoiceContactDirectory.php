@@ -43,6 +43,16 @@ class VoiceContactDirectory
         return $contact->fresh();
     }
 
+    public function findByCallerId(?string $callerId): ?VoiceContact
+    {
+        $normalized = $this->normalizer->normalize($callerId);
+        if ($normalized === '') {
+            return null;
+        }
+
+        return VoiceContact::query()->where('phone_normalized', $normalized)->first();
+    }
+
     public function findByElevenLabsConversationId(?string $conversationId): ?VoiceContact
     {
         $conversationId = trim((string) $conversationId);

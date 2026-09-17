@@ -218,9 +218,9 @@ Current tools:
 | `get_public_shows` | **Current**. Laravel Native Agent webhook. | Read-only `JfsReadService::publicEvents()`. `POST /api/voice/tools/public-shows`. |
 | `get_show_brands` | **Current**. Laravel Native Agent webhook. | Read-only `JfsReadService::publicBrandLineups()`. `POST /api/voice/tools/show-brands`. Public lineup only. |
 | `resolve_customer_identity` | **Current**. Laravel Native Agent webhook. | Read-only `CustomerIdentityResolver::resolveBySpokenHints()`. `POST /api/voice/tools/resolve-customer-identity`. Binds UNIQUE identity to the current `VoiceContact` when a trusted ElevenLabs session id is present. |
+| `get_customer_context` | **Current**. Laravel Native Agent webhook. | Read-only YFS Core children + participations for the **already bound** unique identity. `POST /api/voice/tools/customer-context`. LLM identifiers are ignored. |
 
 Future tools/services (still **Planned**, not live on a production call):
-- YFS participation / history
 - Bitrix24 contact / company
 - Bitrix deals
 - stages
@@ -408,8 +408,9 @@ Production read-only YFS Core tools (same auth, not the POC payload):
 - `POST /api/voice/tools/public-shows` — `get_public_shows`
 - `POST /api/voice/tools/show-brands` — `get_show_brands`
 - `POST /api/voice/tools/resolve-customer-identity` — `resolve_customer_identity`
+- `POST /api/voice/tools/customer-context` — `get_customer_context`
 
-They wrap `JfsReadService` (shows/brands/identity reads) and return structured JSON without secrets. ElevenLabs UI fields: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`, identity contract: `docs/Voice/CUSTOMER_IDENTITY.md`, filler: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`.
+They wrap `JfsReadService` (shows/brands/identity/customer-context reads) and return structured JSON without secrets. ElevenLabs UI fields: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`, identity contract: `docs/Voice/CUSTOMER_IDENTITY.md`, customer context: `docs/Voice/CUSTOMER_CONTEXT.md`, filler: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`.
 
 ## 14. Native Agent conversation context contract
 

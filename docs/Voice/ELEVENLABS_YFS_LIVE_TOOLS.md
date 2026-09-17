@@ -210,8 +210,25 @@ Reuse the same Authorization secret. Do not return candidates, phones, emails, o
 
 ---
 
+## Tool 6 — `get_customer_context`
+
+Full contract: `docs/Voice/CUSTOMER_CONTEXT.md`.
+
+| Field | Value |
+| --- | --- |
+| Tool name | `get_customer_context` |
+| Method | `POST` |
+| URL | `https://ai.youngfashionshow.com/api/voice/tools/customer-context` |
+| Auth | Reuse the existing Authorization secret (`ELEVENLABS_TOOL_TOKEN`). Do not create a new secret. |
+| `response_timeout_secs` | `20` |
+| `pre_tool_speech` | `force` |
+
+Personal operational data from **canonical YFS Core** for the already bound unique identity on this conversation. Not a public calendar. Not Bitrix.
+
+---
+
 ## What not to configure
 
 - Do not point ElevenLabs at the JFS database.
-- Do not add participant, rehearsal, ticket, or package tools from this document.
+- Do not add rehearsal, ticket, payment, or Bitrix dump tools from this document. Personal children / participation goes through `get_customer_context` only.
 - Keep `POST /api/voice/tools/test-context` as the POC smoke tool. It is not live show data.

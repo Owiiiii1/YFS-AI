@@ -77,7 +77,7 @@ Allowed:
 
 Do not say “a couple of minutes”. Say it **may take a little time**.
 
-RU / EN / UK examples live in wrapper v6 section F.
+RU / EN / UK examples live in wrapper v7 section F.
 
 ---
 

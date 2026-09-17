@@ -29,4 +29,18 @@ class VoiceContactSessionResolver
 
         return $this->directory->findOrCreateFromCallerId($callerId);
     }
+
+    /**
+     * Find an existing VoiceContact without creating one.
+     * Conversation id wins over caller id so a second number cannot swap identity.
+     */
+    public function findExistingTrusted(?string $systemCallerId, ?string $systemConversationId): ?VoiceContact
+    {
+        $byConversation = $this->directory->findByElevenLabsConversationId($systemConversationId);
+        if ($byConversation !== null) {
+            return $byConversation;
+        }
+
+        return $this->directory->findByCallerId($systemCallerId);
+    }
 }

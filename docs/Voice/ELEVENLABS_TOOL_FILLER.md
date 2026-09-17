@@ -14,7 +14,7 @@ Official tool fields (Agents webhook / tools create API):
 | `tool_call_sound_behavior` | `auto` (default), `always` | `auto` plays the sound only when there is pre-tool speech |
 | `response_timeout_secs` | 1–120, default 20 | Wait for Laravel; not filler |
 
-There is no separate Laravel “filler phrase” field. Variability comes from the agent choosing one short line in the **current conversation language**, using the examples in wrapper v6.
+There is no separate Laravel “filler phrase” field. Variability comes from the agent choosing one short line in the **current conversation language**, using the examples in wrapper v7.
 
 ---
 
@@ -32,6 +32,7 @@ This setting is **per tool**, not agent-wide. That is how we avoid filler on ins
 | `resolve_customer_identity` | `force` | `typing` (`behavior: auto`) | Fast identity lookup should not be silent (“Секунду, сейчас посмотрю.”) |
 | `start_extended_identity_search` | `auto` | omit, or `typing` + `auto` | Returns immediately; a short phrase is allowed, then the agent explains that extended search may take a little time |
 | `get_extended_identity_search_status` | `off` | omit | Instant DB status; never speak a waiting phrase |
+| `get_customer_context` | `force` | `typing` (`behavior: auto`) | Personal YFS children/participation lookup should not be silent |
 | `get_public_shows` | `auto` | omit, or `typing` + `auto` | Fast JFS read; speak only if recent calls were slow |
 | `get_show_brands` | `auto` | omit, or `typing` + `auto` | Same as public shows |
 | `get_current_yfs_test_context` | `off` | omit | Instant synthetic POC |
@@ -48,7 +49,7 @@ Authorization: reuse the existing workspace secret already used by `get_public_s
 
 Pre-tool speech uses the **current conversation language** (initiation `agent.language` / in-call language detection). Do not pin filler to Russian in the dashboard.
 
-Laravel wrapper v6 lists example phrases so the model can vary them. It must not recite a waiting line before every tool. Extended search uses a different honesty line after `start_extended_identity_search`, not “one moment” on a loop.
+Laravel wrapper v7 lists example phrases so the model can vary them. It must not recite a waiting line before every tool. Extended search uses a different honesty line after `start_extended_identity_search`, not “one moment” on a loop.
 
 ### RU
 

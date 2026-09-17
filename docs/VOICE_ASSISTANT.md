@@ -17,7 +17,7 @@ Related documents:
 
 - `docs/VOICE_ARCHITECTURE.md` — canonical architecture (Current / Planned / rejected)
 - `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md` — verbatim client Customer Support instruction (source of truth for Voice Assistant behaviour settings)
-- `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` — ElevenLabs UI fields for `get_public_shows`, `get_show_brands`, and `resolve_customer_identity`
+- `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` — ElevenLabs UI fields for `get_public_shows`, `get_show_brands`, `resolve_customer_identity`, and `get_customer_context`
 - `docs/Voice/ELEVENLABS_TOOL_FILLER.md` — native pre-tool speech / waiting phrases
 - `docs/Voice/CUSTOMER_IDENTITY.md` — YFS Core caller identity on initiation and spoken-name tool
 - `docs/PROJECT.md` — phase statuses
@@ -56,7 +56,8 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 - `get_public_shows` → `POST /api/voice/tools/public-shows`
 - `get_show_brands` → `POST /api/voice/tools/show-brands`
 - `resolve_customer_identity` → `POST /api/voice/tools/resolve-customer-identity`
-- Live show tools wrap existing `JfsReadService`. Identity uses `CustomerIdentityResolver::resolveBySpokenHints()`. Setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` and `docs/Voice/CUSTOMER_IDENTITY.md`.
+- `get_customer_context` → `POST /api/voice/tools/customer-context`
+- Live show tools wrap existing `JfsReadService`. Identity uses `CustomerIdentityResolver`. Personal children/participations use `get_customer_context`. Setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`, `docs/Voice/CUSTOMER_IDENTITY.md`, `docs/Voice/CUSTOMER_CONTEXT.md`.
 
 **Planned (not implemented):**
 
@@ -136,7 +137,7 @@ See [§5 Voice data](#5-voice-data).
 
 ### Phase 2.3 — Knowledge and tools — **Current** for test tool + public show/brand YFS Core tools; other production tools **Planned**
 
-Laravel Voice Orchestrator still executes `get_current_yfs_test_context` for the Custom LLM fallback. Native Agent production tools `get_public_shows` and `get_show_brands` wrap `JfsReadService` (read-only). Bitrix and participant lookup are not connected.
+Laravel Voice Orchestrator still executes `get_current_yfs_test_context` for the Custom LLM fallback. Native Agent production tools `get_public_shows`, `get_show_brands`, `resolve_customer_identity`, and `get_customer_context` wrap `JfsReadService` (read-only). Bitrix is not a customer-context source.
 
 See [§6 Knowledge and tools](#6-knowledge-and-tools-planned).
 
@@ -207,15 +208,16 @@ Do not treat the POC test-tool results as live business data.
 - `get_public_shows` — `POST /api/voice/tools/public-shows` — `JfsReadService::publicEvents()`
 - `get_show_brands` — `POST /api/voice/tools/show-brands` — `JfsReadService::publicBrandLineups()`
 - `resolve_customer_identity` — `POST /api/voice/tools/resolve-customer-identity` — `CustomerIdentityResolver::resolveBySpokenHints()`
+- `get_customer_context` — `POST /api/voice/tools/customer-context` — bound unique identity → `JfsReadService::loadCustomerContext()`
 
-ElevenLabs setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`. Filler: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`. Identity contract: `docs/Voice/CUSTOMER_IDENTITY.md`.
+ElevenLabs setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`. Filler: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`. Identity contract: `docs/Voice/CUSTOMER_IDENTITY.md`. Customer context: `docs/Voice/CUSTOMER_CONTEXT.md`.
 
 The Voice Agent must call a Laravel tool instead of guessing when information is dynamic or needs confirmation.
 
 Planned tool/service areas:
 
-- YFS Core customer lookup by phone/name/child (identity resolver and `resolve_customer_identity` tool **Current**; package/payment tools still Planned)
-- YFS participation / history
+- YFS Core customer lookup by phone/name/child (identity resolver and `resolve_customer_identity` tool **Current**)
+- YFS participation / children (`get_customer_context` **Current**; payments still Planned)
 - Bitrix24 contact / company
 - Bitrix deals
 - stages

@@ -1,16 +1,17 @@
 <?php
 
+use App\Http\Controllers\Api\ElevenLabsConversationInitiationController;
+use App\Http\Controllers\Api\ElevenLabsExtendedIdentitySearchController;
+use App\Http\Controllers\Api\ElevenLabsGetCustomerContextController;
+use App\Http\Controllers\Api\ElevenLabsPostCallWebhookController;
+use App\Http\Controllers\Api\ElevenLabsResolveCustomerIdentityController;
+use App\Http\Controllers\Api\ElevenLabsTestContextController;
+use App\Http\Controllers\Api\ElevenLabsYfsLiveToolController;
 use App\Http\Controllers\Api\MetaFacebookWebhookController;
 use App\Http\Controllers\Api\MetaInstagramDataDeletionController;
 use App\Http\Controllers\Api\MetaInstagramDeauthorizeController;
 use App\Http\Controllers\Api\MetaInstagramWebhookController;
 use App\Http\Controllers\Api\TelegramWebhookController;
-use App\Http\Controllers\Api\ElevenLabsTestContextController;
-use App\Http\Controllers\Api\ElevenLabsYfsLiveToolController;
-use App\Http\Controllers\Api\ElevenLabsResolveCustomerIdentityController;
-use App\Http\Controllers\Api\ElevenLabsExtendedIdentitySearchController;
-use App\Http\Controllers\Api\ElevenLabsConversationInitiationController;
-use App\Http\Controllers\Api\ElevenLabsPostCallWebhookController;
 use App\Http\Controllers\Api\VoiceContextController;
 use App\Http\Controllers\Api\VoiceRuntimeConfigController;
 use App\Http\Controllers\Api\VoiceSessionTurnController;
@@ -40,6 +41,9 @@ Route::post('/voice/tools/show-brands', [ElevenLabsYfsLiveToolController::class,
 Route::post('/voice/tools/resolve-customer-identity', ElevenLabsResolveCustomerIdentityController::class)
     ->middleware(AuthenticateElevenLabsTool::class)
     ->name('api.voice.tools.resolve-customer-identity');
+Route::post('/voice/tools/customer-context', ElevenLabsGetCustomerContextController::class)
+    ->middleware(AuthenticateElevenLabsTool::class)
+    ->name('api.voice.tools.customer-context');
 Route::post('/voice/tools/start-extended-identity-search', [ElevenLabsExtendedIdentitySearchController::class, 'start'])
     ->middleware(AuthenticateElevenLabsTool::class)
     ->name('api.voice.tools.start-extended-identity-search');

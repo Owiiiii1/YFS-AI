@@ -7,6 +7,7 @@ use App\Services\Bitrix\BitrixReadOnlyIdentityClient;
 use App\Services\Bitrix\BitrixYfsLinker;
 use App\Services\Jfs\JfsReadService;
 use App\Services\Voice\Identity\CustomerIdentityResolver;
+use App\Services\Voice\Tools\GetCustomerContextVoiceTool;
 use App\Services\Voice\Tools\GetExtendedIdentitySearchStatusVoiceTool;
 use App\Services\Voice\Tools\GetPublicShowsVoiceTool;
 use App\Services\Voice\Tools\GetShowBrandsVoiceTool;
@@ -39,6 +40,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(GetPublicShowsVoiceTool::class),
                 $app->make(GetShowBrandsVoiceTool::class),
                 $app->make(ResolveCustomerIdentityVoiceTool::class),
+                $app->make(GetCustomerContextVoiceTool::class),
                 $app->make(StartExtendedIdentitySearchVoiceTool::class),
                 $app->make(GetExtendedIdentitySearchStatusVoiceTool::class),
             ]);

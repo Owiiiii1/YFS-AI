@@ -46,6 +46,8 @@ final class FakeJfsReadService extends JfsReadService
 
     public int $findClientsByChildNameVariantCalls = 0;
 
+    public int $loadCustomerContextCalls = 0;
+
     public int $writeCalls = 0;
 
     public function isConfigured(): bool
@@ -160,8 +162,8 @@ final class FakeJfsReadService extends JfsReadService
         }
 
         return $this->identityRecords(function (array $client) use ($childName): bool {
-            foreach ($client['children'] ?? [] as $firstName) {
-                if (JfsIdentityMatch::nameMatches((string) $firstName, $childName)) {
+            foreach ($this->childDisplayNames($client) as $firstName) {
+                if (JfsIdentityMatch::nameMatches($firstName, $childName)) {
                     return true;
                 }
             }
@@ -195,15 +197,105 @@ final class FakeJfsReadService extends JfsReadService
         }
 
         return $this->identityRecords(function (array $client) use ($childName): bool {
-            foreach ($client['children'] ?? [] as $firstName) {
-                $stored = (string) $firstName;
-                if (! JfsIdentityMatch::nameMatches($stored, $childName) && JfsIdentityMatch::nameMatchesVariant($stored, $childName)) {
+            foreach ($this->childDisplayNames($client) as $firstName) {
+                if (! JfsIdentityMatch::nameMatches($firstName, $childName) && JfsIdentityMatch::nameMatchesVariant($firstName, $childName)) {
                     return true;
                 }
             }
 
             return false;
         });
+    }
+
+    /**
+     * @return array{customer: array{display_name:?string, language:?string}, children: list<array{display_name: string, participations: list<array<string, mixed>>}>}|null
+     */
+    public function loadCustomerContext(int $appUserId): ?array
+    {
+        $this->loadCustomerContextCalls++;
+
+        if ($this->lastReadFailed()) {
+            return null;
+        }
+
+        foreach ($this->clients as $client) {
+            if ((int) ($client['id'] ?? 0) !== $appUserId) {
+                continue;
+            }
+            if (($client['role'] ?? 'client') !== 'client') {
+                return null;
+            }
+            if (($client['status'] ?? 'active') === 'blocked') {
+                return null;
+            }
+
+            $children = [];
+            foreach ($client['children'] ?? [] as $child) {
+                if (is_string($child)) {
+                    $name = trim($child);
+                    if ($name === '') {
+                        continue;
+                    }
+                    $children[] = [
+                        'display_name' => $name,
+                        'participations' => [],
+                    ];
+
+                    continue;
+                }
+                if (! is_array($child)) {
+                    continue;
+                }
+                $name = trim((string) ($child['display_name'] ?? $child['first_name'] ?? ''));
+                if ($name === '') {
+                    continue;
+                }
+                $participations = [];
+                foreach ($child['participations'] ?? [] as $participation) {
+                    if (is_array($participation)) {
+                        $participations[] = $participation;
+                    }
+                }
+                $children[] = [
+                    'display_name' => $name,
+                    'participations' => $participations,
+                ];
+            }
+
+            $name = isset($client['name']) && is_string($client['name']) ? trim($client['name']) : '';
+            $language = isset($client['language']) && is_string($client['language']) ? trim($client['language']) : '';
+
+            return [
+                'customer' => [
+                    'display_name' => $name !== '' ? $name : null,
+                    'language' => $language !== '' ? $language : null,
+                ],
+                'children' => $children,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $client
+     * @return list<string>
+     */
+    private function childDisplayNames(array $client): array
+    {
+        $names = [];
+        foreach ($client['children'] ?? [] as $child) {
+            if (is_string($child)) {
+                $names[] = $child;
+
+                continue;
+            }
+            if (is_array($child)) {
+                $names[] = (string) ($child['display_name'] ?? $child['first_name'] ?? '');
+            }
+        }
+
+        return $names;
     }
 
     /**
