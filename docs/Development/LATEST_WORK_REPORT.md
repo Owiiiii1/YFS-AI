@@ -1,80 +1,146 @@
 # Latest Work Report
 
+## LATEST CALL
+
+prompt_version: **v8**
+identity: **unique**
+get_customer_context: **NOT_CALLED**
+backend_result: not invoked on the call; later service check `status=ok` `children_count=2` `participations_count=2`
+likely_breakpoint: **ElevenLabs published-agent tool attachment** (Laravel initiation sends prompt only, not tools; no Voice tool HTTP at all during this call)
+
+Do **not** strengthen wrapper v8. The next check is manual in the ElevenLabs dashboard.
+
 ## Task
 
-Diagnose why ElevenLabs Native Agent did not call `get_customer_context` on a real identified-caller question about registered children / last event.
+Verify the first real inbound call after wrapper v8. The agent again said personal children data was unavailable. Facts only. No architecture change. No production writes. No ElevenLabs API mutation.
 
 ## ROOT CAUSE
 
-`get_customer_context` was **NOT CALLED** during the last real call.
+`get_customer_context` was **NOT CALLED** on this call.
 
-Initiation ran, wrapper **v7** was already on this host, CALLER CONTEXT was **unique** with a bound YFS `app_user_id`, and the same bound contact can load customer context from JFS (`status=ok`, `children_count=2`, `participations_count=2`).
+Laravel did its job:
 
-The model answered from **Missing Dynamic Fact + Bot Settings App / Help Center** policy instead of invoking the webhook. Section G existed in v7 but did not outrank those fallbacks.
+- conversation initiation webhook **200**
+- wrapper **v8** was the live prompt builder (on disk since `12:43Z`, php-fpm workers recycled `16:06Z`, call `17:58Z`)
+- CALLER CONTEXT **unique**, bound canonical YFS `app_user_id`, conversation id stored on the same VoiceContact
+- `POST /api/voice/tools/customer-context` is registered and live
+- the same bound conversation can load JFS context (`status=ok`, `children_count=2`, `participations_count=2`)
 
-Laravel does **not** send the tool list on conversation initiation. Tools exist only in the ElevenLabs Agent dashboard. This repo cannot prove the dashboard tool was attached to that conversation; it can prove the HTTP tool was never requested.
+Native Agent never requested any Laravel Voice tool between initiation and post-call. Initiation override is **prompt + optional language only**. Tools are **not** injected by Laravel. This repo cannot prove the dashboard tool was attached to the published agent used by this Twilio conversation. It can prove the HTTP tool was never requested.
+
+Post-call persistence also cannot show tool availability: transcript normalizer keeps only `user`/`agent` dialogue turns; `voice_calls.metadata` stores `agent_id` / status / language, not a tool list.
+
+A dashboard Test Tool hit on `2026-09-17 13:12:08Z` already returned **200** for `customer-context`. The live phone path still does not call it.
 
 ## Last real call (no PII)
 
-- Last `voice_calls` row: `2026-09-17 14:55:15Z` start, `14:56:16Z` post-call, duration 54s, status `done`
-- Sep 18 current nginx access log: **0** Voice API hits (today’s tests did not hit this Laravel)
+- `voice_calls` id **11** (11 rows total)
+- start `2026-09-18 17:58:23Z`, end `17:58:58Z`, post-call persist `17:59:05Z`
+- duration 35s, status `done`, language `ru`, inbound Twilio
+- same VoiceContact as the previous failing call
+- same ElevenLabs `agent_id` as that previous call (`sha256` prefix `53839c4600ff1ac3`)
+- stored transcript: 5 dialogue turns; user turn mentions children/event words; last agent turn uses unavailable + App/Help language
+- no tool-shaped turns stored
 
-## get_customer_context CALLED / NOT CALLED
+## 1. Initiation webhook
 
-**NOT CALLED** in the last real call window (`14:55:15Z`–`14:56:16Z`).
+**YES.** nginx: `POST /api/voice/elevenlabs/conversation-initiation` **200** at `17:58:22Z`.
 
-Same day, one `POST /api/voice/tools/customer-context` **200** at `13:12:08Z` (outside that conversation). Other tools in that log: initiation, post-call, extended-identity (earlier). No `customer-context` between initiation and post-call of the last call.
+VoiceContact `metadata.elevenlabs_conversation_id` matches this call’s conversation id (only initiation writes that field).
 
-Laravel `LOG_LEVEL=error`, so `Log::info` tool events are not in `laravel.log`. Nginx path+status used instead. Tokens/PII not copied.
+## 2. Prompt version actually served
 
-## initiation v7 YES/NO
+**v8.**
 
-**YES.** Initiation `POST /api/voice/elevenlabs/conversation-initiation` **200** at `14:55:15Z`. Wrapper v7 was committed `12:23:52Z` the same day (before this call). v7 includes **G. CUSTOMER CONTEXT** and “call `get_customer_context` before answering”. Prompt body with PII was not logged.
+Evidence (initiation does not persist the prompt body; no PII prompt log):
 
-## identity unique YES/NO
+- `VoiceAssistantPromptBuilder::WRAPPER_VERSION = '8'`
+- file mtime `2026-09-18 12:43:14Z`
+- opcache `validate_timestamps=On`, `revalidate_freq=2`
+- php-fpm `www` workers started `2026-09-18 16:06Z` (after v8)
+- reconstructing the current unique-identity prompt after the call: version `v8-8f8958fa…`, section **G. CUSTOMER CONTEXT** present, “ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback” present, `get_customer_context` appears 7 times
 
-**YES.** Bound `metadata.yfs_customer.status=unique`, `match_method=phone`, canonical YFS `app_user_id` present. Conversation id stored on that VoiceContact. `preferred_language=ru`.
+Not v7. Not another wrapper.
 
-## backend customer context
+## 3. Identity
 
-Invoked `GetCustomerContextVoiceTool` for that bound conversation (no HTTP, no PII printed):
+**unique.** `match_method=phone`. Canonical YFS `app_user_id` present. Session resolver finds the same VoiceContact by this conversation id.
+
+## 4–5. `POST /api/voice/tools/customer-context`
+
+**NOT_CALLED** between initiation `17:58:22Z` and post-call `17:59:05Z`.
+
+No HTTP status / tool `status` / counts from the live call (there was no request).
+
+Offline service invocation for the same bound conversation (no HTTP, no PII printed):
 
 - `status=ok`
 - `children_count=2`
 - `participations_count=2`
 - JFS read failed: no
 
-## prompt conflict
+## 6. Post-call tool visibility
 
-**YES.** Immutable B + enabled Bot Settings (General / App / Help Center / Self-Service) tell the model that participant facts live in the YFS App. That ran **before** the tool. Public-show tools were not the issue.
+**Unavailable in Laravel.**
+
+Stored `metadata` keys: `type,status,agent_id,has_audio,phone_call,main_language,call_successful,event_timestamp,termination_reason`.  
+`type=post_call_transcription`. `termination_reason=Call ended by remote party`. `call_successful=success`. No tool-call array.
+
+Transcript extra keys: none. Tool roles are dropped before storage.
+
+Laravel therefore **cannot** confirm whether Native Agent saw `get_customer_context` on this conversation.
+
+## 7. Tools vs initiation
+
+**Tools are not passed on initiation.** `ConversationInitiationClientData` returns only `type` + `conversation_config_override.agent.prompt` (+ `language` when known). No tool list.
+
+Laravel Voice registry includes `get_customer_context`. That does not mean the published ElevenLabs agent has it.
+
+## 8. Agent metadata
+
+Same `agent_id` as the previous live call that also did not call this tool. Same Twilio inbound agent number present (not logged). No agent version / publish id in the webhook payload we persist.
+
+## 9. nginx window (`18/Sep/2026` UTC)
+
+| Time | Request | Status |
+| --- | --- | --- |
+| `17:58:22Z` | `POST /api/voice/elevenlabs/conversation-initiation` | 200 |
+| `17:59:05Z` | `POST /api/voice/elevenlabs/post-call` | 200 |
+
+No `customer-context`, `public-shows`, `show-brands`, `resolve-customer-identity`, or extended-identity in this window.  
+Today’s Voice API hits: those two only.
+
+Laravel `LOG_LEVEL` hides `Log::info` tool events. `laravel.log` has **0** lines in the call window. No 401/500 for this path.
+
+## Prompt conflict
+
+v8 priority text **was** in the builder for this call. Per the previous task: if v8 + unique + NOT_CALLED, **do not** strengthen the prompt again.
+
+The remaining breakpoint is outside Laravel prompt text: the published ElevenLabs agent tool set (missing, unpublished, or a different agent/version than the dashboard draft where the tool was added).
 
 ## What was fixed
 
-Wrapper **v8** (initiation prompt only):
+**Nothing in this pass.** No prompt change, no identity change, no new endpoints, no ElevenLabs dashboard API, no JFS/Bitrix writes.
 
-- Runtime tool rules outrank App / Help Center fallbacks
-- B: do not use App fallback for identified caller children/registrations/packages/history until `get_customer_context` ran
-- G + unique CALLER CONTEXT: ALWAYS call `get_customer_context` before Missing Dynamic Fact / App / Help Center; only then fallback; not for public calendars
+## Concrete next fix (manual, not done here)
 
-No identity architecture change. No ElevenLabs dashboard API change. No JFS/Bitrix writes.
+In ElevenLabs, open the **published** agent that owns this Twilio inbound (`agent_id` same as call 10 and 11):
+
+1. Confirm webhook tool `get_customer_context` is attached to **that agent**, not only created in the workspace.
+2. URL `https://ai.youngfashionshow.com/api/voice/tools/customer-context`, same Bearer as other Voice tools.
+3. Publish that version. Confirm the phone number still points at the published version.
+4. Re-test one identified-caller children question. Expect nginx `POST /api/voice/tools/customer-context` **between** initiation and post-call.
+
+Optional later diagnostic (not implemented): persist post-call tool **names only** (no arguments/PII) so Laravel can see whether the agent had the tool.
 
 ## Tests
 
-`php artisan test --filter VoiceAssistantPromptBuilderTest|VoiceContextEndpointDatabaseTest|ElevenLabsGetCustomerContextTest|GetCustomerContextVoiceToolTest|ElevenLabsConversationInitiation`
-
-26 passed, 13 skipped (`pdo_sqlite`). New regressions: identified caller + children / participation history must place `ALWAYS call get_customer_context…` **before** App/unavailable policy text.
+No new tests in this diagnostic pass. Existing v8 regressions remain on `main`.
 
 ## Commit hash
 
-`45ba32cb2811d3d8c27cee46703b5db403066470` on `main`
+Recorded after git commit.
 
 ## ElevenLabs manual
 
-- Prompt override is Laravel initiation: next call gets **v8** automatically.
-- Tools are **dashboard-only**. Keep `get_customer_context` on the published agent (same URL/Bearer as other Voice tools). This repo cannot attach it.
-- No other dashboard field must change for this prompt fix.
-- PHP-FPM opcache: reload workers if the next initiation is still v7.
-
-## Production confirmation
-
-No schema, no new endpoints, no YFS/Bitrix writes, no Instagram / neighbor-project changes.
+**Yes — required.** Laravel cannot attach tools. Do not change dashboard automatically from this repo.
