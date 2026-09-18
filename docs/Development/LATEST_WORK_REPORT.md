@@ -122,7 +122,7 @@ Until that is done, live calls still will not call the tool; post-call safety ne
 
 ## Commit hash
 
-Recorded after git commit.
+`d52d63be31603cce05b510bcf9f5b953bc92a7f8` on `main`
 
 ## ElevenLabs manual
 
