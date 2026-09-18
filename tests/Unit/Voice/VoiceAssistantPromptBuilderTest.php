@@ -84,8 +84,8 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertSame($first->prompt, $second->prompt);
         $this->assertNotSame($first->generatedAt, $second->generatedAt);
         $this->assertNotSame($first->version, $changed->version);
-        $this->assertStringStartsWith('v7-', $first->version);
-        $this->assertMatchesRegularExpression('/^v7-[a-f0-9]{64}$/', $first->version);
+        $this->assertStringStartsWith('v8-', $first->version);
+        $this->assertMatchesRegularExpression('/^v8-[a-f0-9]{64}$/', $first->version);
     }
 
     #[Test]
@@ -122,9 +122,10 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertStringContainsString('get_extended_identity_search_status', $prompt);
         $this->assertStringContainsString('G. CUSTOMER CONTEXT', $prompt);
         $this->assertStringContainsString('get_customer_context', $prompt);
+        $this->assertStringContainsString('ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback', $prompt);
         $this->assertStringContainsString('Do not say children, registrations, or participation history are unavailable until that tool has run', $prompt);
         $this->assertStringContainsString('Exact client wording.', $prompt);
-        $this->assertStringStartsWith('v7-', $assembled->version);
+        $this->assertStringStartsWith('v8-', $assembled->version);
     }
 
     #[Test]
@@ -133,7 +134,7 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $builder = new VoiceAssistantPromptBuilder;
         $assembled = $builder->assemble([]);
 
-        $this->assertMatchesRegularExpression('/^v7-[a-f0-9]{64}$/', $assembled->version);
+        $this->assertMatchesRegularExpression('/^v8-[a-f0-9]{64}$/', $assembled->version);
         $this->assertStringContainsString('KNOWN POLICY FACT', $assembled->prompt);
         $this->assertStringContainsString('get_public_shows', $assembled->prompt);
         $this->assertStringContainsString('get_show_brands', $assembled->prompt);
@@ -182,5 +183,61 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertStringContainsString('not already uniquely established', $prompt);
         $this->assertStringContainsString('different registered parent or family', $prompt);
         $this->assertStringContainsString('ask_child_name', $prompt);
+    }
+
+    #[Test]
+    public function identified_caller_children_questions_prioritize_customer_context_over_app_fallback(): void
+    {
+        $builder = new VoiceAssistantPromptBuilder;
+        $policy = 'Personal participant data is unavailable. Direct the caller to the YFS App / Help Center.';
+        $assembled = $builder->assemble(
+            [[
+                'key' => 'general',
+                'title' => 'General rules',
+                'instructions' => $policy,
+                'sort_order' => 1,
+            ]],
+            identity: CustomerIdentityResult::unique('phone', 77, 'Identified Parent', 'ru'),
+        );
+        $prompt = $assembled->prompt;
+
+        $priority = strpos($prompt, 'ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback');
+        $fallback = strpos($prompt, $policy);
+        $this->assertNotFalse($priority);
+        $this->assertNotFalse($fallback);
+        $this->assertTrue($priority < $fallback);
+        $this->assertStringContainsString('Status: identified.', $prompt);
+        $this->assertStringContainsString('Only after the tool returns unavailable or lacks the requested field may you use the fallback policy.', $prompt);
+        $this->assertStringContainsString('Do not apply this App / Help Center fallback to the identified caller’s own children', $prompt);
+        $this->assertStringContainsString('get_public_shows', $prompt);
+        $this->assertStringContainsString('Do not call get_customer_context for public show calendars', $prompt);
+        $this->assertStringNotContainsString('77', $prompt);
+    }
+
+    #[Test]
+    public function identified_caller_participation_history_prioritizes_customer_context_over_unavailable_fallback(): void
+    {
+        $builder = new VoiceAssistantPromptBuilder;
+        $policy = 'Participation history is not available. Tell the caller to check the YFS App.';
+        $assembled = $builder->assemble(
+            [[
+                'key' => 'general',
+                'title' => 'General rules',
+                'instructions' => $policy,
+                'sort_order' => 1,
+            ]],
+            identity: CustomerIdentityResult::unique('phone', 88, 'Identified Parent', 'en'),
+        );
+        $prompt = $assembled->prompt;
+
+        $toolRule = strpos($prompt, 'ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback');
+        $historyFallback = strpos($prompt, $policy);
+        $this->assertNotFalse($toolRule);
+        $this->assertNotFalse($historyFallback);
+        $this->assertTrue($toolRule < $historyFallback);
+        $this->assertStringContainsString('participation history', $prompt);
+        $this->assertStringContainsString('For children, registrations, packages, or participation history, ALWAYS call get_customer_context', $prompt);
+        $this->assertStringContainsString('Do not call get_customer_context for public show calendars or public brand lineups.', $prompt);
+        $this->assertStringNotContainsString('88', $prompt);
     }
 }

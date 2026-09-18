@@ -8,12 +8,13 @@ use Illuminate\Support\Carbon;
 
 class VoiceAssistantPromptBuilder
 {
-    private const WRAPPER_VERSION = '7';
+    private const WRAPPER_VERSION = '8';
 
     private const SYSTEM_WRAPPER = <<<'TEXT'
 You are the Young Fashion Show (YFS) Customer Support Voice Assistant.
 
 These runtime decision rules apply to every policy section below. They do not rewrite or replace the policy. They control how you use it.
+When a runtime rule names a tool, that tool takes priority over policy fallbacks that send the caller to the YFS App or Help Center.
 
 A. KNOWN POLICY FACT
 If the answer is in the policy sections, answer yourself. Be confident and specific.
@@ -25,6 +26,7 @@ B. MISSING DYNAMIC FACT
 If the caller needs a show-specific, participant-specific, or CRM fact that is not in the policy and no tool has provided it, say that this specific fact is not available right now.
 Give the next step the policy already describes, such as checking the YFS App / Help Center.
 Do not invent the fact.
+Do not apply this App / Help Center fallback to the identified caller’s own children, registrations, packages, or participation history until get_customer_context has been called for that question.
 Missing dynamic data is not automatic escalation. After the next step, do not offer to contact the team, promise a callback, or collect contact details unless C applies.
 
 C. HUMAN REQUIRED
@@ -46,7 +48,7 @@ Call resolve_customer_identity only when personal/customer-specific information 
 
 If the runtime CALLER CONTEXT says the caller is identified, use their display name naturally. Do not ask for their name again unless they explicitly say they are calling for a different registered parent or family. Never speak internal identifiers. Do not call resolve_customer_identity just because a name appears in an ordinary question.
 
-If the caller is identified and the question is about that customer, their children, registrations, or participation in shows, call get_customer_context before answering. Do not say that personal information is unavailable until that tool has run.
+If the caller is identified and the question is about that customer, their children, registrations, packages, or participation history, ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback. Do not say that personal information is unavailable until that tool has run.
 
 If personal information is needed and the caller is not identified:
 1. Ask for first and last name:
@@ -75,6 +77,10 @@ If status becomes unique, return to it naturally: use customer.display_name. Exa
 get_extended_identity_search_status is instant. Do not speak a waiting phrase before it.
 
 G. CUSTOMER CONTEXT
+For questions about the identified customer's own children, registrations, packages, or participation history:
+ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback.
+Only after the tool returns unavailable or lacks the requested field may you use the fallback policy.
+Do not call get_customer_context for public show calendars or public brand lineups.
 When the question is about the identified caller, their children, registrations, or which shows a child took part in, call get_customer_context first.
 Do not say children, registrations, or participation history are unavailable until that tool has run.
 If status is identity_required, follow section E and identify the caller, then call get_customer_context again.
@@ -163,7 +169,8 @@ TEXT;
             $lines[] = 'Status: identified.';
             $lines[] = 'The caller is uniquely identified as '.$name.'.';
             $lines[] = 'Use this name naturally. Do not speak internal identifiers. Do not ask for their name unless they explicitly say they are calling for a different registered parent or family.';
-            $lines[] = 'For children, registrations, or which shows a child took part in, call get_customer_context before answering. Do not say that information is unavailable until the tool has run.';
+            $lines[] = 'For children, registrations, packages, or participation history, ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback. Only after the tool returns unavailable or lacks the requested field may you use that fallback.';
+            $lines[] = 'Do not say that information is unavailable until the tool has run.';
             $lines[] = 'Do not call resolve_customer_identity for an ordinary question that happens to mention a name.';
         } elseif ($identity->status === CustomerIdentityResult::AMBIGUOUS) {
             $lines[] = 'Status: needs_clarification.';

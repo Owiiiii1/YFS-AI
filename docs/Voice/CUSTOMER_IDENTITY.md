@@ -181,7 +181,7 @@ Call resolve_customer_identity only when personal/customer-specific information 
 - Still ambiguous after child name (`ask_additional_identifier`): do not guess and do not list clients. You may start extended search.
 
 RU ask: `Подскажите, пожалуйста, ваше имя и фамилию.`  
-EN / UK: natural equivalents already in wrapper v7.
+EN / UK: natural equivalents already in wrapper v8.
 
 ### Request / response contract
 
@@ -298,7 +298,7 @@ JFS and Bitrix errors must not fail the webhook.
 
 ## Prompt
 
-Wrapper **v7**, section **E. CALLER IDENTITY**, **F. EXTENDED IDENTITY SEARCH**, and **G. CUSTOMER CONTEXT**. Runtime `CALLER CONTEXT` is appended when initiation resolves identity and is not part of the prompt version hash.
+Wrapper **v8**, section **E. CALLER IDENTITY**, **F. EXTENDED IDENTITY SEARCH**, and **G. CUSTOMER CONTEXT**. Runtime `CALLER CONTEXT` is appended when initiation resolves identity and is not part of the prompt version hash. Identified-caller children / registrations / participation questions must call `get_customer_context` before App / Help Center fallback.
 
 ---
 
