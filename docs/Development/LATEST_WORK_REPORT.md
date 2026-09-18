@@ -66,7 +66,7 @@ No identity architecture change. No ElevenLabs dashboard API change. No JFS/Bitr
 
 ## Commit hash
 
-Recorded after git commit.
+`45ba32cb2811d3d8c27cee46703b5db403066470` on `main`
 
 ## ElevenLabs manual
 
