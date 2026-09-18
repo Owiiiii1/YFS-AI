@@ -139,7 +139,7 @@ No new tests in this diagnostic pass. Existing v8 regressions remain on `main`.
 
 ## Commit hash
 
-Recorded after git commit.
+`f87bf743d9d30113185eca015cb05ed9d0e052dc` on `main`
 
 ## ElevenLabs manual
 
