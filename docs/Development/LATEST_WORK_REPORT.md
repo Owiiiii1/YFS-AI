@@ -1,146 +1,129 @@
 # Latest Work Report
 
-## LATEST CALL
-
-prompt_version: **v8**
-identity: **unique**
-get_customer_context: **NOT_CALLED**
-backend_result: not invoked on the call; later service check `status=ok` `children_count=2` `participations_count=2`
-likely_breakpoint: **ElevenLabs published-agent tool attachment** (Laravel initiation sends prompt only, not tools; no Voice tool HTTP at all during this call)
-
-Do **not** strengthen wrapper v8. The next check is manual in the ElevenLabs dashboard.
-
 ## Task
 
-Verify the first real inbound call after wrapper v8. The agent again said personal children data was unavailable. Facts only. No architecture change. No production writes. No ElevenLabs API mutation.
+Voice Human Follow-up: live `request_human_followup` webhook, Telegram via the existing Instagram bot/group, and post-call safety net.
 
-## ROOT CAUSE
+## Architecture implemented
 
-`get_customer_context` was **NOT CALLED** on this call.
+Twilio → ElevenLabs Native Agent → Laravel `POST /api/voice/tools/request-human-followup` → `voice_followups` → same `TelegramBotService::sendChannelText` as Instagram.
 
-Laravel did its job:
+After `post_call_transcription` persist: `AnalyzeVoiceCallJob` (database queue) → structured `voice_call_analyses` → if the agent promised a callback / human follow-up and no live row exists, create a recovered follow-up and notify Telegram once.
 
-- conversation initiation webhook **200**
-- wrapper **v8** was the live prompt builder (on disk since `12:43Z`, php-fpm workers recycled `16:06Z`, call `17:58Z`)
-- CALLER CONTEXT **unique**, bound canonical YFS `app_user_id`, conversation id stored on the same VoiceContact
-- `POST /api/voice/tools/customer-context` is registered and live
-- the same bound conversation can load JFS context (`status=ok`, `children_count=2`, `participations_count=2`)
+Laravel still does **not** inject tools on initiation. `request_human_followup` must be pasted into the ElevenLabs dashboard and published.
 
-Native Agent never requested any Laravel Voice tool between initiation and post-call. Initiation override is **prompt + optional language only**. Tools are **not** injected by Laravel. This repo cannot prove the dashboard tool was attached to the published agent used by this Twilio conversation. It can prove the HTTP tool was never requested.
+## Migration / schema
 
-Post-call persistence also cannot show tool availability: transcript normalizer keeps only `user`/`agent` dialogue turns; `voice_calls.metadata` stores `agent_id` / status / language, not a tool list.
+`2026_09_18_220000_create_voice_followups_and_voice_call_analyses_tables` — **ran** on production.
 
-A dashboard Test Tool hit on `2026-09-17 13:12:08Z` already returned **200** for `customer-context`. The live phone path still does not call it.
+`voice_followups`: nullable `voice_call_id`, `voice_contact_id`, unique `elevenlabs_conversation_id`, `department`, `reason`, `status` (`open|completed|cancelled`), callback fields, optional names/city/summary, `source=voice`, `telegram_sent_at`, `metadata`.
 
-## Last real call (no PII)
+`voice_call_analyses`: unique `voice_call_id`, intent, department, flags, summary, `unresolved_questions` JSON.
 
-- `voice_calls` id **11** (11 rows total)
-- start `2026-09-18 17:58:23Z`, end `17:58:58Z`, post-call persist `17:59:05Z`
-- duration 35s, status `done`, language `ru`, inbound Twilio
-- same VoiceContact as the previous failing call
-- same ElevenLabs `agent_id` as that previous call (`sha256` prefix `53839c4600ff1ac3`)
-- stored transcript: 5 dialogue turns; user turn mentions children/event words; last agent turn uses unavailable + App/Help language
-- no tool-shaped turns stored
+## Live tool contract
 
-## 1. Initiation webhook
+`POST /api/voice/tools/request-human-followup` + `AuthenticateElevenLabsTool`.
 
-**YES.** nginx: `POST /api/voice/elevenlabs/conversation-initiation` **200** at `17:58:22Z`.
+Trusted: `system__conversation_id`, `system__caller_id`. LLM: `department`, `reason`, `callback_requested`, `callback_phone`, `preferred_callback_time`, `customer_name`, `child_name`, `show_city`, `summary`. Internal ids ignored.
 
-VoiceContact `metadata.elevenlabs_conversation_id` matches this call’s conversation id (only initiation writes that field).
+Responses (no ids):
 
-## 2. Prompt version actually served
+- `{ok:true,status:created,department}` — saved and Telegram delivered
+- `{ok:true,status:already_created,department}` — same conversation, Telegram already sent
+- `{ok:false,status:queued,department}` — saved, Telegram not delivered; agent must **not** confirm transfer
+- `{ok:false,status:failed}` — no conversation / invalid department or reason
 
-**v8.**
+Unknown Sales leads do not need YFS identity. Dictated `callback_phone` wins; otherwise a valid E.164 trusted caller number may be used. Never invent a number.
 
-Evidence (initiation does not persist the prompt body; no PII prompt log):
+## Telegram reuse
 
-- `VoiceAssistantPromptBuilder::WRAPPER_VERSION = '8'`
-- file mtime `2026-09-18 12:43:14Z`
-- opcache `validate_timestamps=On`, `revalidate_freq=2`
-- php-fpm `www` workers started `2026-09-18 16:06Z` (after v8)
-- reconstructing the current unique-identity prompt after the call: version `v8-8f8958fa…`, section **G. CUSTOMER CONTEXT** present, “ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback” present, `get_customer_context` appears 7 times
+Same Settings Telegram bot + group/topic. No new credentials. Instagram `BotOutcomeService` unchanged. Voice formatter omits empty lines and internal ids. Optional admin URL `/call-center?call={id}` only when `voice_call_id` is known (usually post-call).
 
-Not v7. Not another wrapper.
+## Delivery semantics
 
-## 3. Identity
+Confirm to the caller only when `ok=true`. `queued` keeps the row for retry (`telegram_sent_at` null). One Telegram send per follow-up.
 
-**unique.** `match_method=phone`. Canonical YFS `app_user_id` present. Session resolver finds the same VoiceContact by this conversation id.
+## Idempotency
 
-## 4–5. `POST /api/voice/tools/customer-context`
+One follow-up per `elevenlabs_conversation_id` (`lockForUpdate`). Duplicate live tool → `already_created`, no second Telegram. Safety net does not insert a second row if a live row exists.
 
-**NOT_CALLED** between initiation `17:58:22Z` and post-call `17:59:05Z`.
+## Post-call analyzer
 
-No HTTP status / tool `status` / counts from the live call (there was no request).
+`AnalyzeVoiceCallJob` (`ShouldBeUnique` per call) dispatched after persist; does not block the ElevenLabs webhook. Uses existing `AiReplyGenerator` / `bot_runtime`. No new API keys. Failures are logged; analysis defaults to no follow-up rather than inventing one.
 
-Offline service invocation for the same bound conversation (no HTTP, no PII printed):
+## Safety-net behavior
 
-- `status=ok`
-- `children_count=2`
-- `participations_count=2`
-- JFS read failed: no
+A. Live follow-up exists → store analysis, no duplicate row/Telegram (retry first send only if `telegram_sent_at` is null).  
+B. Agent promised callback / human follow-up required and no live row → create `metadata.created_by=post_call_safety_net`, Telegram header `⚠️ Voice · Follow-up recovered after call`.  
+C. Ordinary call → analysis only, no follow-up.
 
-## 6. Post-call tool visibility
+## Prompt
 
-**Unavailable in Laravel.**
+Wrapper **v9** section **H. HUMAN FOLLOW-UP ACTION**. Never promise transfer before `ok true` + `created|already_created`. SALE → CONTRACT → CUSTOMER SUPPORT for department.
 
-Stored `metadata` keys: `type,status,agent_id,has_audio,phone_call,main_language,call_successful,event_timestamp,termination_reason`.  
-`type=post_call_transcription`. `termination_reason=Call ended by remote party`. `call_successful=success`. No tool-call array.
+## Tests / results
 
-Transcript extra keys: none. Tool roles are dropped before storage.
+Focused (sqlite in-memory, `pdo_sqlite` loaded only in the test process):
 
-Laravel therefore **cannot** confirm whether Native Agent saw `get_customer_context` on this conversation.
+- `ElevenLabsRequestHumanFollowupTest` — 6 passed (unknown lead, no identity, idempotent Telegram, queued on Telegram failure, dictated phone, auth)
+- `VoiceCallFollowupSafetyNetTest` — 4 passed (A/B/C + job)
+- `VoiceFollowupTelegramFormatterTest` — 1 passed
+- Prompt v9 + confirmation-before-tool regression
+- Post-call webhook still dispatches `AnalyzeVoiceCallJob` (`Queue::fake`)
 
-## 7. Tools vs initiation
+**11 passed / 92 assertions** on those filters.
 
-**Tools are not passed on initiation.** `ConversationInitiationClientData` returns only `type` + `conversation_config_override.agent.prompt` (+ `language` when known). No tool list.
+Full suite with sqlite: **328 passed**, **8 failed**, **5 errors**. Failures are **pre-existing** (Inertia page components missing in test, `BotPromptPatchServiceTest` forbidden paths, `Monolog\Logger::fake()`). None are in the new follow-up files.
 
-Laravel Voice registry includes `get_customer_context`. That does not mean the published ElevenLabs agent has it.
+`phpunit.xml` now `force="true"` on `APP_ENV` / `DB_CONNECTION=sqlite` / `DB_DATABASE=:memory:` so tests cannot use production MySQL.
 
-## 8. Agent metadata
+No automated test sent Telegram to the manager group (bot mocked).
 
-Same `agent_id` as the previous live call that also did not call this tool. Same Twilio inbound agent number present (not logged). No agent version / publish id in the webhook payload we persist.
+## Production deployment status
 
-## 9. nginx window (`18/Sep/2026` UTC)
+- Migration applied
+- `route:clear` + `config:clear` during deploy; `php artisan optimize` after commit
+- Endpoint live: `POST /api/voice/tools/request-human-followup`
+- Two `AnalyzeVoiceCallJob` rows had failed earlier (queue worker booted before the analyzer binding). Retry after worker restart
+- PHP-FPM picks up wrapper v9 via opcache timestamp revalidation
 
-| Time | Request | Status |
-| --- | --- | --- |
-| `17:58:22Z` | `POST /api/voice/elevenlabs/conversation-initiation` | 200 |
-| `17:59:05Z` | `POST /api/voice/elevenlabs/post-call` | 200 |
+## Files changed
 
-No `customer-context`, `public-shows`, `show-brands`, `resolve-customer-identity`, or extended-identity in this window.  
-Today’s Voice API hits: those two only.
+Live path: migration, `VoiceFollowup` / `VoiceCallAnalysis`, recorder/notifier/formatter, `RequestHumanFollowupVoiceTool` + controller, routes, registry, prompt v9, post-call job/analyzer/safety net.
 
-Laravel `LOG_LEVEL` hides `Log::info` tool events. `laravel.log` has **0** lines in the call window. No 401/500 for this path.
+Docs: `docs/Voice/HUMAN_FOLLOWUP.md`, live tools list, DATABASE, VOICE_*, EXTERNAL_SERVICES, CUSTOMER_IDENTITY.
 
-## Prompt conflict
+Tests as above.
 
-v8 priority text **was** in the builder for this call. Per the previous task: if v8 + unique + NOT_CALLED, **do not** strengthen the prompt again.
+## Security review
 
-The remaining breakpoint is outside Laravel prompt text: the published ElevenLabs agent tool set (missing, unpublished, or a different agent/version than the dashboard draft where the tool was added).
+No Telegram / ElevenLabs / Bitrix / AI keys in git or tool JSON. No JFS/Bitrix writes. No Instagram behavior change. LLM cannot pass internal ids. Callback phone is E.164 only. Logs: follow-up id / status, not tokens or full prompts with secrets. Telegram formatter has no conversation ids.
 
-## What was fixed
+## Exact ElevenLabs manual configuration
 
-**Nothing in this pass.** No prompt change, no identity change, no new endpoints, no ElevenLabs dashboard API, no JFS/Bitrix writes.
+Paste from `docs/Voice/HUMAN_FOLLOWUP.md` onto the **published** Twilio agent:
 
-## Concrete next fix (manual, not done here)
+- Name `request_human_followup`
+- URL `https://ai.youngfashionshow.com/api/voice/tools/request-human-followup`
+- Same Bearer secret as other Voice tools
+- `system__*` = Dynamic Variables; business fields = LLM Prompt
+- `response_timeout_secs=15`, `pre_tool_speech=force`, execution immediate (not async)
+- Publish
 
-In ElevenLabs, open the **published** agent that owns this Twilio inbound (`agent_id` same as call 10 and 11):
+Until that is done, live calls still will not call the tool; post-call safety net can still recover.
 
-1. Confirm webhook tool `get_customer_context` is attached to **that agent**, not only created in the workspace.
-2. URL `https://ai.youngfashionshow.com/api/voice/tools/customer-context`, same Bearer as other Voice tools.
-3. Publish that version. Confirm the phone number still points at the published version.
-4. Re-test one identified-caller children question. Expect nginx `POST /api/voice/tools/customer-context` **between** initiation and post-call.
+## Known limitations
 
-Optional later diagnostic (not implemented): persist post-call tool **names only** (no arguments/PII) so Laravel can see whether the agent had the tool.
-
-## Tests
-
-No new tests in this diagnostic pass. Existing v8 regressions remain on `main`.
+- Tools are dashboard-only (initiation prompt override has no tool list)
+- Call Center UI for analysis/follow-up status is not in this pass (columns exist)
+- Post-call quality depends on `bot_runtime` JSON extract
+- `queued` requires a later tool retry or safety-net retry to finish Telegram
+- Host PHP CLI has no `pdo_sqlite`; full sqlite suite needs the module loaded in-process (as in this run)
 
 ## Commit hash
 
-`f87bf743d9d30113185eca015cb05ed9d0e052dc` on `main`
+Recorded after git commit.
 
 ## ElevenLabs manual
 
-**Yes — required.** Laravel cannot attach tools. Do not change dashboard automatically from this repo.
+**Yes — required** to attach `request_human_followup` to the published agent. Dashboard not changed from this repo.

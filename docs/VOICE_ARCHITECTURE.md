@@ -219,6 +219,7 @@ Current tools:
 | `get_show_brands` | **Current**. Laravel Native Agent webhook. | Read-only `JfsReadService::publicBrandLineups()`. `POST /api/voice/tools/show-brands`. Public lineup only. |
 | `resolve_customer_identity` | **Current**. Laravel Native Agent webhook. | Read-only `CustomerIdentityResolver::resolveBySpokenHints()`. `POST /api/voice/tools/resolve-customer-identity`. Binds UNIQUE identity to the current `VoiceContact` when a trusted ElevenLabs session id is present. |
 | `get_customer_context` | **Current**. Laravel Native Agent webhook. | Read-only YFS Core children + participations for the **already bound** unique identity. `POST /api/voice/tools/customer-context`. LLM identifiers are ignored. |
+| `request_human_followup` | **Current**. Laravel Native Agent webhook. | Creates a `voice_followups` row and notifies the existing Telegram manager group. `POST /api/voice/tools/request-human-followup`. Unknown Sales leads do not need YFS identity. |
 
 Future tools/services (still **Planned**, not live on a production call):
 - Bitrix24 contact / company
@@ -239,7 +240,7 @@ Rules for that layer:
 
 ## 6. Post-call pipeline
 
-**Current** for transcript persistence, language memory, and the Call Center journal. Audio archive, AI analysis, Telegram, follow-ups, and YFS/Bitrix matching remain **Planned**.
+**Current** for transcript persistence, language memory, the Call Center journal, Voice human follow-ups, Telegram manager notifications (same bot/group as Instagram), and async post-call structured analysis. Audio archive and YFS/Bitrix matching remain **Planned**.
 
 ElevenLabs remains the owner/source of telephone conversation audio. The `post_call_transcription` webhook does not include a recording URL in the documented payload, so `voice_calls.recording_url` stays nullable. A separate `post_call_audio` event carries base64 audio; YFS acknowledges it and does not persist `full_audio`.
 
@@ -348,7 +349,7 @@ The following are **not** current:
 - Voice admin Follow-ups
 - Bitrix24 customer matching on the initiation webhook
 - ElevenLabs UI webhook URLs (backend adapters exist; this repo does not change the agent settings)
-- other planned `voice_*` tables (`voice_followups`, `voice_agent_settings`). `voice_assistant_settings`, `voice_contacts`, and `voice_calls` exist.
+- other planned `voice_*` tables (`voice_agent_settings`). `voice_assistant_settings`, `voice_contacts`, `voice_calls`, `voice_followups`, and `voice_call_analyses` exist.
 
 ---
 

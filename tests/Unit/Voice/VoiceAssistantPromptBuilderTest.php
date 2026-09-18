@@ -84,8 +84,8 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertSame($first->prompt, $second->prompt);
         $this->assertNotSame($first->generatedAt, $second->generatedAt);
         $this->assertNotSame($first->version, $changed->version);
-        $this->assertStringStartsWith('v8-', $first->version);
-        $this->assertMatchesRegularExpression('/^v8-[a-f0-9]{64}$/', $first->version);
+        $this->assertStringStartsWith('v9-', $first->version);
+        $this->assertMatchesRegularExpression('/^v9-[a-f0-9]{64}$/', $first->version);
     }
 
     #[Test]
@@ -107,7 +107,8 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertStringContainsString('B. MISSING DYNAMIC FACT', $prompt);
         $this->assertStringContainsString('not automatic escalation', $prompt);
         $this->assertStringContainsString('C. HUMAN REQUIRED', $prompt);
-        $this->assertStringContainsString('collect contact details only when', $prompt);
+        $this->assertStringContainsString('Escalate only through request_human_followup', $prompt);
+        $this->assertStringContainsString('Never confirm that a manager was notified until request_human_followup returns ok true', $prompt);
         $this->assertStringContainsString('Do not invent dynamic facts', $prompt);
         $this->assertStringContainsString('D. LIVE SHOW TOOLS', $prompt);
         $this->assertStringContainsString('get_public_shows', $prompt);
@@ -124,8 +125,11 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertStringContainsString('get_customer_context', $prompt);
         $this->assertStringContainsString('ALWAYS call get_customer_context before applying Missing Dynamic Fact / App / Help Center fallback', $prompt);
         $this->assertStringContainsString('Do not say children, registrations, or participation history are unavailable until that tool has run', $prompt);
+        $this->assertStringContainsString('H. HUMAN FOLLOW-UP ACTION', $prompt);
+        $this->assertStringContainsString('request_human_followup', $prompt);
+        $this->assertStringContainsString('Never promise that information was sent to a manager', $prompt);
         $this->assertStringContainsString('Exact client wording.', $prompt);
-        $this->assertStringStartsWith('v8-', $assembled->version);
+        $this->assertStringStartsWith('v9-', $assembled->version);
     }
 
     #[Test]
@@ -134,13 +138,15 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $builder = new VoiceAssistantPromptBuilder;
         $assembled = $builder->assemble([]);
 
-        $this->assertMatchesRegularExpression('/^v8-[a-f0-9]{64}$/', $assembled->version);
+        $this->assertMatchesRegularExpression('/^v9-[a-f0-9]{64}$/', $assembled->version);
         $this->assertStringContainsString('KNOWN POLICY FACT', $assembled->prompt);
         $this->assertStringContainsString('get_public_shows', $assembled->prompt);
         $this->assertStringContainsString('get_show_brands', $assembled->prompt);
         $this->assertStringContainsString('get_customer_context', $assembled->prompt);
+        $this->assertStringContainsString('request_human_followup', $assembled->prompt);
         $this->assertStringContainsString('E. CALLER IDENTITY', $assembled->prompt);
         $this->assertStringContainsString('G. CUSTOMER CONTEXT', $assembled->prompt);
+        $this->assertStringContainsString('H. HUMAN FOLLOW-UP ACTION', $assembled->prompt);
     }
 
     #[Test]
@@ -239,5 +245,24 @@ class VoiceAssistantPromptBuilderTest extends TestCase
         $this->assertStringContainsString('For children, registrations, packages, or participation history, ALWAYS call get_customer_context', $prompt);
         $this->assertStringContainsString('Do not call get_customer_context for public show calendars or public brand lineups.', $prompt);
         $this->assertStringNotContainsString('88', $prompt);
+    }
+
+    #[Test]
+    public function human_followup_must_succeed_before_the_agent_confirms_a_manager_transfer(): void
+    {
+        $builder = new VoiceAssistantPromptBuilder;
+        $prompt = $builder->assemble([])->prompt;
+
+        $this->assertStringContainsString('H. HUMAN FOLLOW-UP ACTION', $prompt);
+        $this->assertStringContainsString('request_human_followup', $prompt);
+        $this->assertStringContainsString('Never promise that information was sent to a manager', $prompt);
+        $this->assertStringContainsString('until request_human_followup returns ok true with status created or already_created', $prompt);
+        $this->assertStringContainsString('Unknown Sales leads may create a follow-up without YFS identity', $prompt);
+        $this->assertStringContainsString('Do not invent application status', $prompt);
+        $this->assertStringContainsString('preferred_callback_time is a caller preference, not a guaranteed appointment', $prompt);
+        $this->assertTrue(
+            strpos($prompt, 'Never promise that information was sent to a manager')
+            < strpos($prompt, 'After a successful tool result, confirm naturally')
+        );
     }
 }

@@ -62,6 +62,8 @@ The bot answers `/start` after the token is bound.
 
 Closed Instagram cases (form sent, manager request, operator needed, JFS lookup) are posted to the bound channel, group, or forum topic. Product rules: `docs/INSTAGRAM_BOT.md`.
 
+Voice human follow-ups reuse the **same** bot and group via `TelegramBotService::sendChannelText`. Formatter: `docs/Voice/HUMAN_FOLLOWUP.md`. Instagram copy/behavior is unchanged.
+
 ## JFS (read-only)
 
 The main ops app at `/var/www/jfs` is never written from this project.
@@ -126,11 +128,11 @@ Details: `docs/VOICE_ARCHITECTURE.md`. Do not write account IDs, tokens, or API 
 | Native Agent Laravel webhook tools | Authenticated `POST /api/voice/tools/test-context` smoke-test. Structured JSON back to the agent voice response. | **Current (POC SUCCESS)**. Confirmed via ElevenLabs Test Tool and a real voice conversation. Not YFS Core / Bitrix. |
 | Native Agent conversation context | Authenticated `POST /api/voice/context`. Assembled prompt from `voice_assistant_settings`. | **Current (diagnostic JSON)**. |
 | Native Agent conversation initiation adapter | Authenticated `POST /api/voice/elevenlabs/conversation-initiation`. Returns `conversation_initiation_client_data` with system prompt override and optional `agent.language` for known contacts. | **Current (backend adapter)**. Paste URL into ElevenLabs. YFS Core / Bitrix not connected. |
-| Native Agent post-call webhook | HMAC `POST /api/voice/elevenlabs/post-call`. Persists `voice_calls` / updates `voice_contacts.preferred_language`. | **Current (backend)**. Register in ElevenLabs UI. Secret is not in git. |
+| Native Agent post-call webhook | HMAC `POST /api/voice/elevenlabs/post-call`. Persists `voice_calls` / updates `voice_contacts.preferred_language`. Dispatches async `AnalyzeVoiceCallJob`. | **Current (backend)**. Register in ElevenLabs UI. Secret is not in git. |
+| Post-call audio / transcript / analysis | Persist `voice_*`, archive audio, Telegram. | Transcript + vendor summary + language memory **Current**. Voice follow-up Telegram + structured analysis **Current**. Audio URL is not in the transcription webhook. Audio downloader **Planned**. |
 | YFS Custom LLM / Gemini | Experimental/fallback business brain (text) behind Custom LLM. | **Experimental / fallback**. Existing routing unchanged. Not deleted. |
 | ElevenLabs Speech Engine | Experimental / legacy low-level realtime path. | Not production routing. Code kept, not activated. |
 | Voice Orchestrator / YFS Core / Bitrix tools | Laravel tool layer. | YFS Core public show/brand tools Current. Bitrix not connected. |
-| Post-call audio / transcript / analysis | Persist `voice_*`, archive audio, Telegram. | Transcript + vendor summary + language memory **Current**. Audio URL is not in the transcription webhook. AI analysis / Telegram / downloader **Planned**. |
 | OpenAI Realtime / Gemini Live | Full realtime voice APIs. | **Rejected for Phase 2**. |
 
 ## Explicitly not used from Mousse Bakery

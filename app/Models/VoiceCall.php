@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class VoiceCall extends Model
 {
@@ -37,5 +39,15 @@ class VoiceCall extends Model
     public function contact(): BelongsTo
     {
         return $this->belongsTo(VoiceContact::class, 'voice_contact_id');
+    }
+
+    public function followups(): HasMany
+    {
+        return $this->hasMany(VoiceFollowup::class);
+    }
+
+    public function analysis(): HasOne
+    {
+        return $this->hasOne(VoiceCallAnalysis::class);
     }
 }

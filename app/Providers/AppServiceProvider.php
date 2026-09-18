@@ -7,10 +7,13 @@ use App\Services\Bitrix\BitrixReadOnlyIdentityClient;
 use App\Services\Bitrix\BitrixYfsLinker;
 use App\Services\Jfs\JfsReadService;
 use App\Services\Voice\Identity\CustomerIdentityResolver;
+use App\Services\Voice\Calls\AiVoiceCallPostCallAnalyzer;
+use App\Services\Voice\Calls\VoiceCallPostCallAnalyzer;
 use App\Services\Voice\Tools\GetCustomerContextVoiceTool;
 use App\Services\Voice\Tools\GetExtendedIdentitySearchStatusVoiceTool;
 use App\Services\Voice\Tools\GetPublicShowsVoiceTool;
 use App\Services\Voice\Tools\GetShowBrandsVoiceTool;
+use App\Services\Voice\Tools\RequestHumanFollowupVoiceTool;
 use App\Services\Voice\Tools\ResolveCustomerIdentityVoiceTool;
 use App\Services\Voice\Tools\StartExtendedIdentitySearchVoiceTool;
 use App\Services\Voice\Tools\TestVoiceTool;
@@ -34,6 +37,8 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
+        $this->app->singleton(VoiceCallPostCallAnalyzer::class, AiVoiceCallPostCallAnalyzer::class);
+
         $this->app->singleton(VoiceToolRegistry::class, function ($app) {
             return new VoiceToolRegistry([
                 $app->make(TestVoiceTool::class),
@@ -43,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(GetCustomerContextVoiceTool::class),
                 $app->make(StartExtendedIdentitySearchVoiceTool::class),
                 $app->make(GetExtendedIdentitySearchStatusVoiceTool::class),
+                $app->make(RequestHumanFollowupVoiceTool::class),
             ]);
         });
     }

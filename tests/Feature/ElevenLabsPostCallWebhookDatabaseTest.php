@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\AnalyzeVoiceCallJob;
 use App\Models\VoiceCall;
 use App\Models\VoiceContact;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
@@ -25,6 +27,7 @@ class ElevenLabsPostCallWebhookDatabaseTest extends TestCase
             'services.elevenlabs.tool_token' => 'test-elevenlabs-tool-token',
             'services.elevenlabs.post_call_webhook_secret' => 'test-post-call-secret',
         ]);
+        Queue::fake();
     }
 
     #[Test]
@@ -55,6 +58,10 @@ class ElevenLabsPostCallWebhookDatabaseTest extends TestCase
         $this->assertSame(1, $call->contact->calls_count);
         $this->assertSame('ru', $call->contact->preferred_language);
         $this->assertSame('+15551234567', $call->contact->phone_normalized);
+
+        Queue::assertPushed(AnalyzeVoiceCallJob::class, function (AnalyzeVoiceCallJob $job) use ($call): bool {
+            return $job->voiceCallId === $call->id;
+        });
 
         $metadataJson = json_encode($call->metadata);
         $this->assertStringNotContainsString('test-post-call-secret', $metadataJson);
@@ -135,6 +142,7 @@ class ElevenLabsPostCallWebhookDatabaseTest extends TestCase
         ]);
 
         $this->assertSame(0, VoiceCall::query()->count());
+        Queue::assertNothingPushed();
     }
 
     #[Test]

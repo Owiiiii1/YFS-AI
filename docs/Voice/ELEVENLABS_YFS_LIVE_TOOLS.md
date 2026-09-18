@@ -227,6 +227,24 @@ Personal operational data from **canonical YFS Core** for the already bound uniq
 
 ---
 
+## Tool 7 — `request_human_followup`
+
+Full contract, Telegram reuse, post-call safety net, and dashboard JSON: `docs/Voice/HUMAN_FOLLOWUP.md`.
+
+| Field | Value |
+| --- | --- |
+| Tool name | `request_human_followup` |
+| Method | `POST` |
+| URL | `https://ai.youngfashionshow.com/api/voice/tools/request-human-followup` |
+| Auth | Reuse the existing Authorization secret (`ELEVENLABS_TOOL_TOKEN`). Do not create a new secret. |
+| `response_timeout_secs` | `15` |
+| `pre_tool_speech` | `force` |
+| Execution | Immediate webhook. Do not use async. |
+
+Creates a Voice human follow-up and notifies the existing Telegram manager group. Unknown Sales leads do not need YFS identity. The agent must not confirm transfer until `ok` is true.
+
+---
+
 ## What not to configure
 
 - Do not point ElevenLabs at the JFS database.

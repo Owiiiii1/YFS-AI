@@ -32,4 +32,9 @@ class VoiceContact extends Model
     {
         return $this->hasMany(VoiceCall::class);
     }
+
+    public function followups(): HasMany
+    {
+        return $this->hasMany(VoiceFollowup::class);
+    }
 }

@@ -17,7 +17,7 @@ Related documents:
 
 - `docs/VOICE_ARCHITECTURE.md` — canonical architecture (Current / Planned / rejected)
 - `docs/Voice/CLIENT_CUSTOMER_SUPPORT_POLICY_UA.md` — verbatim client Customer Support instruction (source of truth for Voice Assistant behaviour settings)
-- `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` — ElevenLabs UI fields for `get_public_shows`, `get_show_brands`, `resolve_customer_identity`, and `get_customer_context`
+- `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md` — ElevenLabs UI fields for `get_public_shows`, `get_show_brands`, `resolve_customer_identity`, `get_customer_context`, and `request_human_followup`
 - `docs/Voice/ELEVENLABS_TOOL_FILLER.md` — native pre-tool speech / waiting phrases
 - `docs/Voice/CUSTOMER_IDENTITY.md` — YFS Core caller identity on initiation and spoken-name tool
 - `docs/PROJECT.md` — phase statuses
@@ -57,13 +57,14 @@ Do not record account IDs, API keys, tokens, passwords, or other secrets in this
 - `get_show_brands` → `POST /api/voice/tools/show-brands`
 - `resolve_customer_identity` → `POST /api/voice/tools/resolve-customer-identity`
 - `get_customer_context` → `POST /api/voice/tools/customer-context`
-- Live show tools wrap existing `JfsReadService`. Identity uses `CustomerIdentityResolver`. Personal children/participations use `get_customer_context`. Setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`, `docs/Voice/CUSTOMER_IDENTITY.md`, `docs/Voice/CUSTOMER_CONTEXT.md`.
+- `request_human_followup` → `POST /api/voice/tools/request-human-followup`
+- Live show tools wrap existing `JfsReadService`. Identity uses `CustomerIdentityResolver`. Personal children/participations use `get_customer_context`. Human callbacks use `request_human_followup` + the existing Telegram group. Setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`, `docs/Voice/CUSTOMER_IDENTITY.md`, `docs/Voice/CUSTOMER_CONTEXT.md`, `docs/Voice/HUMAN_FOLLOWUP.md`.
 
 **Planned (not implemented):**
 
 - Bitrix24 Voice tools (not connected yet)
 - production business tools
-- AI post-call analysis, audio archive, Telegram
+- AI post-call analysis **Current** (async structured analysis + follow-up safety net). Audio archive **Planned**.
 - live transfer / callback workflows in Laravel
 
 Voice Assistant and Sales Agent must not share one prompt or one agent configuration.
@@ -193,7 +194,7 @@ One completed ElevenLabs conversation.
 
 ### Still planned
 
-`voice_followups`, `voice_agent_settings`, `voice_call_messages` as a separate table (turns currently live on `voice_calls.transcript`), YFS/Bitrix FKs on `voice_contacts`.
+`voice_agent_settings`, `voice_call_messages` as a separate table (turns currently live on `voice_calls.transcript`), YFS/Bitrix FKs on `voice_contacts`. `voice_followups` and `voice_call_analyses` are **Current**.
 
 ---
 
@@ -209,6 +210,7 @@ Do not treat the POC test-tool results as live business data.
 - `get_show_brands` — `POST /api/voice/tools/show-brands` — `JfsReadService::publicBrandLineups()`
 - `resolve_customer_identity` — `POST /api/voice/tools/resolve-customer-identity` — `CustomerIdentityResolver::resolveBySpokenHints()`
 - `get_customer_context` — `POST /api/voice/tools/customer-context` — bound unique identity → `JfsReadService::loadCustomerContext()`
+- `request_human_followup` — `POST /api/voice/tools/request-human-followup` — create Sales/Support follow-up + Telegram (same bot/group)
 
 ElevenLabs setup: `docs/Voice/ELEVENLABS_YFS_LIVE_TOOLS.md`. Filler: `docs/Voice/ELEVENLABS_TOOL_FILLER.md`. Identity contract: `docs/Voice/CUSTOMER_IDENTITY.md`. Customer context: `docs/Voice/CUSTOMER_CONTEXT.md`.
 

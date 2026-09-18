@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ElevenLabsConversationInitiationController;
 use App\Http\Controllers\Api\ElevenLabsExtendedIdentitySearchController;
 use App\Http\Controllers\Api\ElevenLabsGetCustomerContextController;
+use App\Http\Controllers\Api\ElevenLabsRequestHumanFollowupController;
 use App\Http\Controllers\Api\ElevenLabsPostCallWebhookController;
 use App\Http\Controllers\Api\ElevenLabsResolveCustomerIdentityController;
 use App\Http\Controllers\Api\ElevenLabsTestContextController;
@@ -44,6 +45,9 @@ Route::post('/voice/tools/resolve-customer-identity', ElevenLabsResolveCustomerI
 Route::post('/voice/tools/customer-context', ElevenLabsGetCustomerContextController::class)
     ->middleware(AuthenticateElevenLabsTool::class)
     ->name('api.voice.tools.customer-context');
+Route::post('/voice/tools/request-human-followup', ElevenLabsRequestHumanFollowupController::class)
+    ->middleware(AuthenticateElevenLabsTool::class)
+    ->name('api.voice.tools.request-human-followup');
 Route::post('/voice/tools/start-extended-identity-search', [ElevenLabsExtendedIdentitySearchController::class, 'start'])
     ->middleware(AuthenticateElevenLabsTool::class)
     ->name('api.voice.tools.start-extended-identity-search');

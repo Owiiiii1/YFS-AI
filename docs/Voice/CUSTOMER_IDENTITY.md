@@ -298,7 +298,7 @@ JFS and Bitrix errors must not fail the webhook.
 
 ## Prompt
 
-Wrapper **v8**, section **E. CALLER IDENTITY**, **F. EXTENDED IDENTITY SEARCH**, and **G. CUSTOMER CONTEXT**. Runtime `CALLER CONTEXT` is appended when initiation resolves identity and is not part of the prompt version hash. Identified-caller children / registrations / participation questions must call `get_customer_context` before App / Help Center fallback.
+Wrapper **v9**, section **E. CALLER IDENTITY**, **F. EXTENDED IDENTITY SEARCH**, **G. CUSTOMER CONTEXT**, and **H. HUMAN FOLLOW-UP ACTION**. Runtime `CALLER CONTEXT` is appended when initiation resolves identity and is not part of the prompt version hash. Identified-caller children / registrations / participation questions must call `get_customer_context` before App / Help Center fallback.
 
 ---
 

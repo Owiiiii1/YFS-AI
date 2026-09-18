@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\AnalyzeVoiceCallJob;
 use App\Services\Voice\Calls\ElevenLabsPostCallPersister;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -21,7 +22,10 @@ class ElevenLabsPostCallWebhookController extends Controller
             ]);
         }
 
-        $persister->persist($payload);
+        $call = $persister->persist($payload);
+        if ($call !== null) {
+            AnalyzeVoiceCallJob::dispatch($call->id);
+        }
 
         return response()->json(['ok' => true]);
     }
